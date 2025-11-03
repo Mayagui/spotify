@@ -1,2 +1,2 @@
-# spotify
-projet spotify 
+# Spotify
+projet Spotify 
