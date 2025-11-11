@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Playlist de groupe</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; }
+      button { padding: 10px 14px; border-radius: 8px; border: 1px solid #ccc; cursor: pointer; }
+      .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+      .card { border: 1px solid #e5e5e5; border-radius: 10px; padding: 16px; margin-top: 16px; }
+      input[type="text"] { padding: 8px 10px; border-radius: 6px; border: 1px solid #ccc; width: 320px; }
+      code { background: #f6f8fa; padding: 2px 6px; border-radius: 6px; }
+    </style>
+  </head>
+  <body>
+    <h2>Playlist de groupe Spotify</h2>
+
+    <div class="card">
+      <div class="row">
+        <button onclick="location.href='/login'">Se connecter avec Spotify</button>
+        <button id="refreshBtn">Rafraîchir la liste des membres</button>
+      </div>
+      <p>Connectez autant de comptes que vous voulez (un par navigateur/session). Après chaque connexion, cliquez sur « Rafraîchir ».</p>
+      <div>
+        <strong>Membres connectés:</strong>
+        <ul id="memberList"></ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Générer une playlist</h3>
+      <div style="margin-bottom:8px">
+        <label>Nom</label><br />
+        <input id="name" type="text" value="Ma Playlist de Groupe" />
+      </div>
+      <div style="margin-bottom:8px">
+        <label>Description</label><br />
+        <input id="description" type="text" value="Générée automatiquement" />
+      </div>
+      <div class="row" style="margin-bottom:8px">
+        <label><input id="public" type="checkbox" /> Publique</label>
+        <label>Limite: <input id="limit" type="number" min="1" max="100" value="30" style="width:80px" /></label>
+      </div>
+      <div class="row">
+        <button id="generateBtn">Générer</button>
+        <span id="status" style="margin-left:8px"></span>
+      </div>
+      <pre id="result" style="white-space:pre-wrap"></pre>
+    </div>
+
+    <script>
+      async function loadMembers() {
+        const ul = document.getElementById('memberList');
+        ul.innerHTML = '<li>Chargement…</li>';
+        try {
+          const res = await fetch('/members');
+          const data = await res.json();
+          ul.innerHTML = '';
+          (data.members || []).forEach(id => {
+            const li = document.createElement('li');
+            li.textContent = id;
+            ul.appendChild(li);
+          });
+          if (!data.members || data.members.length === 0) {
+            ul.innerHTML = '<li>Aucun membre connecté pour le moment.</li>';
+          }
+        } catch (e) {
+          ul.innerHTML = '<li>Erreur lors du chargement des membres.</li>';
+        }
+      }
+
+      async function generate() {
+        const status = document.getElementById('status');
+        const result = document.getElementById('result');
+        status.textContent = 'Génération en cours…';
+        result.textContent = '';
+        try {
+          const resMembers = await fetch('/members');
+          const m = await resMembers.json();
+          const members = m.members || [];
+          if (members.length === 0) {
+            status.textContent = 'Ajoutez au moins un membre via « Se connecter »';
+            return;
+          }
+          const payload = {
+            member_ids: members,
+            name: document.getElementById('name').value,
+            description: document.getElementById('description').value,
+            public: document.getElementById('public').checked,
+            preferences: {
+              limit: parseInt(document.getElementById('limit').value || '30', 10)
+            }
+          };
+          const res = await fetch('/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+          const data = await res.json();
+          if (!res.ok) {
+            status.textContent = 'Erreur';
+            result.textContent = JSON.stringify(data, null, 2);
+            return;
+          }
+          status.textContent = 'Succès';
+          result.textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+          status.textContent = 'Erreur inattendue';
+          result.textContent = String(e);
+        }
+      }
+
+      document.getElementById('refreshBtn').addEventListener('click', loadMembers);
+      document.getElementById('generateBtn').addEventListener('click', generate);
+      loadMembers();
+    </script>
+  </body>
+  </html>
+
