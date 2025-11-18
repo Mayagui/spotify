@@ -20,3 +20,4 @@ cloudflared.tgz
 
 .env
 .env
+venv/
