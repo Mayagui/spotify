@@ -18,3 +18,5 @@ cloudflared.tgz
 .vscode/
 .idea/
 
+.env
+.env

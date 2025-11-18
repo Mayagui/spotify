@@ -99,7 +99,7 @@ def create_app() -> Flask:
             update_member_tokens(mid, t)
             member_tokens.append(access)
 
-        # Generation recommandations
+        # 1. Generation recommandations
         rec = generate_group_playlist(
             owner_access_token=owner_access,
             member_tokens=member_tokens,
@@ -109,9 +109,19 @@ def create_app() -> Flask:
             preferences=preferences,
         )
 
-        # Creation playlist et ajout des titres
+        # 2. VÉRIFICATION D'ERREUR (nouvelle étape cruciale)
+        if "error" in rec:
+            # L'erreur (token expiré, pas de seed, etc.) est gérée dans group_playlist.py
+            return jsonify({"error": f"Erreur de génération Spotify: {rec['error']}"}), 500
+        
+        # 3. Création playlist et ajout des titres (SÛR car 'rec' contient 'uris')
         owner_profile = get_current_user_profile(owner_access)
         owner_spotify_id = owner_profile.get("id")
+        
+        # Vérification supplémentaire au cas où le profil échouerait (rare, mais prudent)
+        if not owner_spotify_id:
+            return jsonify({"error": "Impossible de récupérer l'ID Spotify du propriétaire pour la création de la playlist."}), 500
+            
         playlist_id = create_playlist(owner_access, owner_spotify_id, name, description, public)
         add_tracks_to_playlist(owner_access, playlist_id, rec["uris"])
 
@@ -128,7 +138,5 @@ def create_app() -> Flask:
 app = create_app()
 
 
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", "5000"))
-    app.run(host="0.0.0.0", port=port, debug=True)
-
+if __name__ == '__main__':
+    app.run(debug=True, port=5050) # Force le port à 5050
