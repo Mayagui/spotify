@@ -20,7 +20,7 @@ def get_auth_url(state: str, scopes: str) -> str:
         "redirect_uri": SPOTIFY_REDIRECT_URI,
         "scope": scopes,
         "state": state,
-        "show_dialog": "false",
+        "show_dialog": "true",  # IMPORTANT
     }
     return f"{AUTH_URL}?{urllib.parse.urlencode(params)}"
 
@@ -88,11 +88,15 @@ def get_valid_access_token(tokens: Dict[str, str]) -> Optional[str]:
     except ValueError:
         expires_at = 0
     now = int(time.time())
+
     if now < (expires_at - 30):
         return tokens.get("access_token")
+
     if not tokens.get("refresh_token"):
         return None
+
     refreshed = refresh_access_token(tokens["refresh_token"])
     tokens.update(refreshed)
     return tokens.get("access_token")
+
 

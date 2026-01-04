@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify Playlist Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1DB954 0%, #191414 100%);
+            min-height: 100vh;
+            color: white;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            font-size: 3em;
+            margin: 40px 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            margin: 20px 0;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        
+        h2 {
+            margin-bottom: 20px;
+            color: #1DB954;
+        }
+        
+        button {
+            background: #1DB954;
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 30px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(29, 185, 84, 0.4);
+        }
+        
+        button:hover {
+            background: #1ed760;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(29, 185, 84, 0.6);
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid rgba(255,255,255,0.2);
+            border-radius: 10px;
+            background: rgba(255,255,255,0.1);
+            color: white;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #1DB954;
+        }
+        
+        input::placeholder {
+            color: rgba(255,255,255,0.5);
+        }
+        
+        #membersList {
+            list-style: none;
+            padding: 0;
+        }
+        
+        #membersList li {
+            background: rgba(255,255,255,0.1);
+            padding: 10px 15px;
+            margin: 5px 0;
+            border-radius: 8px;
+            border-left: 4px solid #1DB954;
+        }
+        
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            font-weight: bold;
+        }
+        
+        .success {
+            background: rgba(29, 185, 84, 0.2);
+            border: 2px solid #1DB954;
+        }
+        
+        .error {
+            background: rgba(255, 59, 48, 0.2);
+            border: 2px solid #ff3b30;
+        }
+        
+        a {
+            color: #1DB954;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Spotify Playlist Generator</h1>
+        
+        <div class="card">
+            <h2>🔐 Connexion</h2>
+            <button onclick="window.location.href='/login'">
+                Se connecter avec Spotify
+            </button>
+        </div>
+
+        <div class="card">
+            <h2>👥 Membres connectés</h2>
+            <ul id="membersList"></ul>
+        </div>
+
+        <div class="card">
+            <h2>✨ Créer une playlist</h2>
+            <input type="text" id="playlistName" placeholder="Nom de la playlist (ex: Soirée entre amis)">
+            <input type="text" id="playlistDesc" placeholder="Description (optionnel)">
+            <button onclick="createPlaylist()">Créer la playlist</button>
+            <div id="result"></div>
+        </div>
+    </div>
+
+    <script>
+        async function loadMembers() {
+            try {
+                const response = await fetch('/members');
+                const data = await response.json();
+                const list = document.getElementById('membersList');
+                
+                if (data.members.length === 0) {
+                    list.innerHTML = '<li>Aucun membre connecté</li>';
+                } else {
+                    list.innerHTML = data.members.map(m => `<li>✓ ${m}</li>`).join('');
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+            }
+        }
+
+        async function createPlaylist() {
+            const name = document.getElementById('playlistName').value;
+            const description = document.getElementById('playlistDesc').value;
+            const resultDiv = document.getElementById('result');
+            
+            if (!name) {
+                resultDiv.className = 'error';
+                resultDiv.innerHTML = '❌ Veuillez entrer un nom de playlist';
+                return;
+            }
+
+            resultDiv.innerHTML = '⏳ Création en cours...';
+            resultDiv.className = '';
+
+            try {
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        member_ids: [],
+                        name: name,
+                        description: description || "Créée avec Playlist Generator",
+                        public: false,
+                        limit: 20,
+                        preferences: {}
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    resultDiv.className = 'success';
+                    resultDiv.innerHTML = `
+                        ✅ ${result.message}<br>
+                        <a href="${result.url}" target="_blank">🎧 Ouvrir sur Spotify</a>
+                    `;
+                } else {
+                    resultDiv.className = 'error';
+                    resultDiv.innerHTML = `❌ ${result.error}`;
+                }
+            } catch (error) {
+                resultDiv.className = 'error';
+                resultDiv.innerHTML = `❌ Erreur: ${error.message}`;
+            }
+        }
+
+        loadMembers();
+    </script>
+</body>
+</html>
