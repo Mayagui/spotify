@@ -1,15 +1,17 @@
 from sqlmodel import SQLModel, create_engine, Session
+import os
 
-# C'est l'adresse de ta base de données qu'on vient de lancer avec Docker
-DATABASE_URL = "postgresql://postgres:password@localhost:5432/spotify_db"
+# Utiliser SQLite pour le développement (plus simple)
+# Pour PostgreSQL en production, utilisez: "postgresql://user:password@localhost:5432/spotify_db"
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./spotify.db")
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL, echo=False)
 
 def create_db_and_tables():
-    """Crée les tables dans la base de données"""
+    """Crée toutes les tables définies dans models.py"""
     SQLModel.metadata.create_all(engine)
 
 def get_session():
-    """Dépendance pour récupérer une session de DB dans FastAPI"""
+    """Fournit une session de base de données pour les dépendances FastAPI"""
     with Session(engine) as session:
         yield session
