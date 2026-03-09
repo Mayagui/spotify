@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESME Playlist Generator - Système de Recommandation Musicale</title>
+    <title>GroupMix - Système de Recommandation Musicale</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap');
         
@@ -14,19 +14,21 @@
         }
         
         :root {
-            --esme-blue: #0047AB;
-            --esme-dark-blue: #002F6C;
-            --esme-light-blue: #4A90E2;
-            --esme-red: #E63946;
-            --bg-dark: #0A0E27;
-            --bg-card: #1A1F3A;
+            /* Palette Spotify Officielle */
+            --spotify-green: #1DB954;
+            --spotify-light-green: #1ed760;
+            --spotify-dark: #121212;
+            --spotify-black: #000000;
+            --bg-card: #181818;
+            --bg-card-hover: #282828;
             --text-white: #FFFFFF;
-            --text-gray: #B4C1D7;
+            --text-gray: #B3B3B3;
+            --error-red: #E22134;
         }
         
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: linear-gradient(135deg, var(--bg-dark) 0%, var(--esme-dark-blue) 100%);
+            background: linear-gradient(135deg, var(--spotify-black) 0%, var(--spotify-dark) 100%);
             min-height: 100vh;
             color: var(--text-white);
             padding: 20px;
@@ -49,10 +51,11 @@
             position: absolute;
             width: 4px;
             height: 4px;
-            background: var(--esme-light-blue);
+            background: var(--spotify-green);
             border-radius: 50%;
-            opacity: 0.3;
+            opacity: 0.15;
             animation: float 15s infinite ease-in-out;
+            box-shadow: 0 0 10px var(--spotify-green);
         }
         
         @keyframes float {
@@ -68,7 +71,7 @@
             z-index: 1;
         }
         
-        /* Header avec logo ESME */
+        /* Header */
         .header {
             text-align: center;
             margin-bottom: 50px;
@@ -84,32 +87,29 @@
         }
         
         .esme-logo {
-            width: 120px;
-            height: 120px;
-            background: linear-gradient(135deg, var(--esme-blue), var(--esme-light-blue));
-            border-radius: 30px;
+            width: 100px;
+            height: 100px;
+            background: linear-gradient(135deg, var(--spotify-green), #0b6b2d);
+            border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 48px;
+            font-size: 40px;
             font-weight: 900;
-            color: white;
-            box-shadow: 0 20px 60px rgba(0, 71, 171, 0.4);
+            color: var(--spotify-black);
+            box-shadow: 0 10px 40px rgba(29, 185, 84, 0.3);
             animation: pulse 3s infinite;
         }
         
         @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
+            0%, 100% { transform: scale(1); box-shadow: 0 10px 40px rgba(29, 185, 84, 0.3); }
+            50% { transform: scale(1.05); box-shadow: 0 15px 50px rgba(29, 185, 84, 0.5); }
         }
         
         h1 {
             font-size: 3.5em;
             font-weight: 900;
-            background: linear-gradient(135deg, var(--esme-light-blue), white);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: var(--text-white);
             margin-bottom: 10px;
             letter-spacing: -2px;
         }
@@ -121,7 +121,7 @@
         }
         
         .subtitle .highlight {
-            color: var(--esme-red);
+            color: var(--spotify-green);
             font-weight: 600;
         }
         
@@ -136,10 +136,10 @@
         /* Cards */
         .card {
             background: var(--bg-card);
-            border-radius: 25px;
+            border-radius: 12px; /* Spotify utilise des arrondis plus légers */
             padding: 40px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(74, 144, 226, 0.1);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            border: 1px solid transparent;
             transition: all 0.3s ease;
             position: relative;
             overflow: hidden;
@@ -151,13 +151,18 @@
             top: 0;
             left: 0;
             width: 100%;
-            height: 3px;
-            background: linear-gradient(90deg, var(--esme-blue), var(--esme-red), var(--esme-light-blue));
+            height: 4px;
+            background: linear-gradient(90deg, transparent, var(--spotify-green), transparent);
+            opacity: 0;
+            transition: opacity 0.3s ease;
         }
         
         .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 50px rgba(0, 71, 171, 0.3);
+            background: var(--bg-card-hover);
+        }
+        
+        .card:hover::before {
+            opacity: 1;
         }
         
         .card-header {
@@ -170,8 +175,9 @@
         .card-icon {
             width: 50px;
             height: 50px;
-            background: linear-gradient(135deg, var(--esme-blue), var(--esme-light-blue));
-            border-radius: 15px;
+            background: rgba(29, 185, 84, 0.1);
+            color: var(--spotify-green);
+            border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -186,8 +192,8 @@
         
         /* Auth section */
         .auth-status {
-            background: rgba(74, 144, 226, 0.1);
-            border-radius: 15px;
+            background: var(--spotify-dark);
+            border-radius: 8px;
             padding: 20px;
             margin-bottom: 20px;
             display: flex;
@@ -205,12 +211,12 @@
             width: 12px;
             height: 12px;
             border-radius: 50%;
-            background: var(--esme-red);
+            background: var(--error-red);
             animation: blink 2s infinite;
         }
         
         .dot.connected {
-            background: #00FF88;
+            background: var(--spotify-green);
         }
         
         @keyframes blink {
@@ -220,37 +226,40 @@
         
         /* Buttons */
         .btn {
-            padding: 18px 40px;
+            padding: 16px 32px;
             border: none;
-            border-radius: 50px;
+            border-radius: 500px; /* Bordures très arrondies façon Spotify */
             font-size: 16px;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
             transition: all 0.3s ease;
             display: inline-flex;
             align-items: center;
+            justify-content: center;
             gap: 10px;
             text-decoration: none;
-            color: white;
+            letter-spacing: 0.5px;
         }
         
         .btn-primary {
-            background: linear-gradient(135deg, var(--esme-blue), var(--esme-light-blue));
-            box-shadow: 0 10px 30px rgba(0, 71, 171, 0.3);
+            background: var(--spotify-green);
+            color: var(--spotify-black);
+            width: 100%;
         }
         
         .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 15px 40px rgba(0, 71, 171, 0.5);
+            background: var(--spotify-light-green);
+            transform: scale(1.04);
         }
-        
+
         .btn-secondary {
-            background: rgba(74, 144, 226, 0.2);
-            border: 2px solid var(--esme-light-blue);
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-white);
         }
-        
+
         .btn-secondary:hover {
-            background: rgba(74, 144, 226, 0.3);
+            background: rgba(255, 255, 255, 0.14);
+            transform: scale(1.02);
         }
         
         /* Members list */
@@ -260,31 +269,32 @@
         }
         
         .member-item {
-            background: rgba(74, 144, 226, 0.1);
+            background: var(--spotify-dark);
             padding: 15px 20px;
             margin: 10px 0;
-            border-radius: 12px;
+            border-radius: 8px;
             display: flex;
             align-items: center;
-            gap: 12px;
-            border-left: 4px solid var(--esme-blue);
+            gap: 15px;
             transition: all 0.3s ease;
         }
         
         .member-item:hover {
-            background: rgba(74, 144, 226, 0.2);
-            transform: translateX(5px);
+            background: #2a2a2a;
         }
         
         .member-avatar {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, var(--esme-blue), var(--esme-red));
+            width: 45px;
+            height: 45px;
+            background: linear-gradient(135deg, #333, #555);
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 700;
+            font-size: 18px;
+            color: white;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
         }
         
         /* Recommendation options */
@@ -295,9 +305,9 @@
         }
         
         .option-card {
-            background: rgba(74, 144, 226, 0.05);
+            background: var(--spotify-dark);
             border: 2px solid transparent;
-            border-radius: 15px;
+            border-radius: 8px;
             padding: 20px;
             cursor: pointer;
             transition: all 0.3s ease;
@@ -305,13 +315,12 @@
         }
         
         .option-card.selected {
-            background: rgba(74, 144, 226, 0.15);
-            border-color: var(--esme-blue);
+            background: rgba(29, 185, 84, 0.05);
+            border-color: var(--spotify-green);
         }
         
         .option-card:hover {
-            background: rgba(74, 144, 226, 0.1);
-            transform: translateX(5px);
+            background: #2a2a2a;
         }
         
         .option-header {
@@ -322,20 +331,24 @@
         }
         
         .radio {
-            width: 24px;
-            height: 24px;
-            border: 3px solid var(--esme-light-blue);
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--text-gray);
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
         }
         
+        .option-card.selected .radio {
+            border-color: var(--spotify-green);
+        }
+        
         .option-card.selected .radio::after {
             content: '';
-            width: 12px;
-            height: 12px;
-            background: var(--esme-blue);
+            width: 10px;
+            height: 10px;
+            background: var(--spotify-green);
             border-radius: 50%;
         }
         
@@ -348,7 +361,8 @@
         .option-badge {
             margin-left: auto;
             padding: 4px 12px;
-            background: var(--esme-red);
+            background: rgba(29, 185, 84, 0.2);
+            color: var(--spotify-green);
             border-radius: 20px;
             font-size: 0.75em;
             font-weight: 700;
@@ -359,7 +373,7 @@
             color: var(--text-gray);
             font-size: 0.9em;
             line-height: 1.5;
-            padding-left: 39px;
+            padding-left: 35px;
         }
         
         /* Form inputs */
@@ -370,8 +384,9 @@
         .form-label {
             display: block;
             margin-bottom: 10px;
-            color: var(--text-gray);
-            font-weight: 600;
+            color: var(--text-white);
+            font-weight: 700;
+            font-size: 0.9em;
         }
         
         input[type="text"],
@@ -379,9 +394,9 @@
         textarea {
             width: 100%;
             padding: 15px 20px;
-            background: rgba(74, 144, 226, 0.05);
-            border: 2px solid rgba(74, 144, 226, 0.2);
-            border-radius: 12px;
+            background: #2a2a2a;
+            border: 1px solid transparent;
+            border-radius: 4px; /* Plus carré comme Spotify */
             color: var(--text-white);
             font-size: 16px;
             font-family: 'Inter', sans-serif;
@@ -391,8 +406,13 @@
         input:focus,
         textarea:focus {
             outline: none;
-            border-color: var(--esme-blue);
-            background: rgba(74, 144, 226, 0.1);
+            background: #333;
+            border-color: #555;
+        }
+        
+        input:hover,
+        textarea:hover {
+            background: #333;
         }
         
         input::placeholder,
@@ -400,38 +420,72 @@
             color: var(--text-gray);
         }
         
+        /* Contrôles hybrides (Sliders) */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: var(--text-white);
+            cursor: pointer;
+            margin-top: -6px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+        
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #535353;
+            border-radius: 2px;
+        }
+        
+        input[type=range]:focus::-webkit-slider-runnable-track {
+            background: var(--spotify-green);
+        }
+        
         /* Result */
         .result {
             margin-top: 30px;
-            padding: 25px;
-            border-radius: 15px;
+            padding: 20px;
+            border-radius: 8px;
             font-weight: 600;
         }
         
         .result.success {
-            background: rgba(0, 255, 136, 0.1);
-            border: 2px solid #00FF88;
-            color: #00FF88;
+            background: rgba(29, 185, 84, 0.1);
+            border-left: 4px solid var(--spotify-green);
+            color: var(--spotify-green);
         }
         
         .result.error {
-            background: rgba(230, 57, 70, 0.1);
-            border: 2px solid var(--esme-red);
-            color: var(--esme-red);
+            background: rgba(226, 33, 52, 0.1);
+            border-left: 4px solid var(--error-red);
+            color: var(--error-red);
         }
         
         .result a {
-            color: var(--esme-light-blue);
+            color: var(--text-white);
             text-decoration: none;
             font-weight: 700;
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            margin-top: 10px;
+            margin-top: 15px;
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 500px;
+            transition: background 0.3s;
         }
         
         .result a:hover {
-            text-decoration: underline;
+            background: rgba(255,255,255,0.2);
+            text-decoration: none;
         }
         
         /* Stats */
@@ -443,24 +497,25 @@
         }
         
         .stat-card {
-            background: rgba(74, 144, 226, 0.05);
+            background: var(--spotify-dark);
             padding: 20px;
-            border-radius: 12px;
+            border-radius: 8px;
             text-align: center;
         }
         
         .stat-value {
             font-size: 2em;
             font-weight: 900;
-            color: var(--esme-blue);
+            color: var(--spotify-green);
             margin-bottom: 5px;
         }
         
         .stat-label {
-            font-size: 0.85em;
+            font-size: 0.75em;
             color: var(--text-gray);
             text-transform: uppercase;
             letter-spacing: 1px;
+            font-weight: 700;
         }
         
         /* Responsive */
@@ -472,9 +527,8 @@
         
         @media (max-width: 768px) {
             h1 {
-                font-size: 2em;
+                font-size: 2.5em;
             }
-            
             .stats-grid {
                 grid-template-columns: 1fr;
             }
@@ -489,10 +543,10 @@
         <!-- Header -->
         <div class="header">
             <div class="logo-container">
-                <div class="esme-logo">E</div>
+                <div class="esme-logo">🎧</div>
             </div>
-            <h1>ESME Playlist Generator</h1>
-            <p class="subtitle">Système de <span class="highlight">Recommandation Musicale</span> Intelligent</p>
+            <h1>ESME GroupMix</h1>
+            <p class="subtitle">Le <span class="highlight">Générateur de Playlist Collaboratif</span> Propulsé par l'IA</p>
         </div>
         
         <!-- Main grid -->
@@ -508,11 +562,11 @@
                     <div class="auth-status">
                         <div class="status-indicator">
                             <div class="dot" id="statusDot"></div>
-                            <span id="statusText">Non connecté</span>
+                            <span id="statusText" style="font-weight: 600;">Non connecté</span>
                         </div>
                     </div>
                     
-                    <button class="btn btn-primary" onclick="window.location.href='/login'">
+                    <button class="btn btn-primary" onclick="loginSpotify()">
                         <span>🎵</span> Se connecter avec Spotify
                     </button>
                 </div>
@@ -520,12 +574,45 @@
                 <div class="card" style="margin-top: 30px;">
                     <div class="card-header">
                         <div class="card-icon">👥</div>
-                        <div class="card-title">Membres Connectés</div>
+                        <div class="card-title">Membres de la Session</div>
+                    </div>
+
+                    <div style="background: var(--spotify-dark); border-radius: 8px; padding: 18px; margin-bottom: 18px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px;">
+                            <div>
+                                <div style="font-weight: 800;">Salon (Room)</div>
+                                <div id="roomInfo" style="color: var(--text-gray); font-size: 0.9em; margin-top: 4px;">
+                                    Aucun salon sélectionné.
+                                </div>
+                            </div>
+                            <button class="btn btn-secondary" style="padding: 12px 18px; width: auto;" onclick="createRoom()">
+                                ➕ Créer
+                            </button>
+                        </div>
+
+                        <div id="roomJoinRow" style="display: flex; gap: 10px; align-items: center;">
+                            <input type="text" id="roomIdInput" placeholder="Colle un room_id (ex: ab12cd34)" style="flex: 1;">
+                            <button class="btn btn-secondary" style="padding: 12px 18px; width: auto;" onclick="joinRoom()">
+                                Rejoindre
+                            </button>
+                        </div>
+
+                        <div id="roomActiveRow" style="display: none; margin-top: 12px;">
+                            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                                <button class="btn btn-secondary" style="padding: 12px 18px; width: auto;" onclick="copyRoomLink()">
+                                    🔗 Copier le lien d'invitation
+                                </button>
+                                <button class="btn btn-secondary" style="padding: 12px 18px; width: auto;" onclick="leaveRoom()">
+                                    ⛔ Quitter le salon
+                                </button>
+                            </div>
+                            <div id="roomLinkHint" style="display:none; margin-top: 10px; color: var(--text-gray); font-size: 0.85em;"></div>
+                        </div>
                     </div>
                     
                     <ul class="members-list" id="membersList">
                         <li style="color: var(--text-gray); text-align: center; padding: 20px;">
-                            Chargement...
+                            Chargement en cours...
                         </li>
                     </ul>
                     
@@ -540,7 +627,7 @@
                         </div>
                         <div class="stat-card">
                             <div class="stat-value">∞</div>
-                            <div class="stat-label">Playlists</div>
+                            <div class="stat-label">Titres</div>
                         </div>
                     </div>
                 </div>
@@ -550,11 +637,11 @@
             <div class="card">
                 <div class="card-header">
                     <div class="card-icon">🎯</div>
-                    <div class="card-title">Générer une Playlist</div>
+                    <div class="card-title">Générer la Playlist</div>
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label">Algorithme de recommandation</label>
+                    <label class="form-label">Mode de recommandation</label>
                     <div class="recommendation-options">
                         <div class="option-card" onclick="selectOption(this, 'hybrid')">
                             <div class="option-header">
@@ -563,7 +650,7 @@
                                 <div class="option-badge">Recommandé</div>
                             </div>
                             <div class="option-description">
-                                Combine les deux approches pour une recommandation optimale et diversifiée.
+                                Le meilleur des deux mondes. Équilibre les goûts du groupe tout en ajoutant des découvertes cohérentes.
                             </div>
                         </div>
                         
@@ -573,7 +660,7 @@
                                 <div class="option-title">Filtrage Collaboratif</div>
                             </div>
                             <div class="option-description">
-                                Analyse les similarités entre utilisateurs pour recommander des titres basés sur les goûts collectifs du groupe.
+                                Analyse vos habitudes d'écoute croisées pour trouver le terrain d'entente parfait du groupe.
                             </div>
                         </div>
                         
@@ -583,36 +670,36 @@
                                 <div class="option-title">Filtrage par Contenu</div>
                             </div>
                             <div class="option-description">
-                                Recommande des morceaux similaires basés sur les caractéristiques audio (tempo, énergie, genre).
+                                Analyse les signatures audio (tempo, énergie) de vos titres favoris pour trouver des jumeaux musicaux.
                             </div>
                         </div>
                         
                         <div class="option-card" onclick="selectOption(this, 'simple')">
                             <div class="option-header">
                                 <div class="radio"></div>
-                                <div class="option-title">Simple (Déduplication)</div>
+                                <div class="option-title">Mélange Simple</div>
                             </div>
                             <div class="option-description">
-                                Méthode basique : mélange les favoris de tous les membres sans algorithme avancé.
+                                Fusion basique de vos titres favoris respectifs, sans magie algorithmique.
                             </div>
                         </div>
                     </div>
                     
                     <!-- Contrôles de poids pour méthode hybride -->
-                    <div id="hybridControls" class="hybrid-controls" style="display: none; margin-top: 20px; padding: 20px; background: rgba(74, 144, 226, 0.05); border-radius: 12px;">
-                        <label class="form-label">Poids des algorithmes (méthode hybride)</label>
-                        <div style="display: flex; align-items: center; gap: 15px; margin-top: 10px;">
+                    <div id="hybridControls" style="display: none; margin-top: 20px; padding: 20px; background: var(--spotify-dark); border-radius: 8px;">
+                        <label class="form-label" style="margin-bottom: 15px;">Équilibre de l'algorithme</label>
+                        <div style="display: flex; align-items: center; gap: 20px;">
                             <div style="flex: 1;">
-                                <label style="font-size: 0.9em; color: var(--text-gray);">Contenu</label>
+                                <label style="font-size: 0.85em; color: var(--text-gray); font-weight: 600;">Découverte (Contenu)</label>
                                 <input type="range" id="contentWeight" min="0" max="100" value="60" 
-                                       oninput="updateWeights()" style="width: 100%; margin-top: 5px;">
-                                <div id="contentWeightValue" style="text-align: center; margin-top: 5px; font-weight: 600;">60%</div>
+                                       oninput="updateWeights()" style="width: 100%; margin-top: 8px;">
+                                <div id="contentWeightValue" style="text-align: center; margin-top: 5px; font-weight: 700; color: var(--spotify-green);">60%</div>
                             </div>
                             <div style="flex: 1;">
-                                <label style="font-size: 0.9em; color: var(--text-gray);">Collaboratif</label>
+                                <label style="font-size: 0.85em; color: var(--text-gray); font-weight: 600;">Consensus (Collab)</label>
                                 <input type="range" id="collabWeight" min="0" max="100" value="40" 
-                                       oninput="updateWeights()" style="width: 100%; margin-top: 5px;">
-                                <div id="collabWeightValue" style="text-align: center; margin-top: 5px; font-weight: 600;">40%</div>
+                                       oninput="updateWeights()" style="width: 100%; margin-top: 8px;">
+                                <div id="collabWeightValue" style="text-align: center; margin-top: 5px; font-weight: 700; color: var(--spotify-green);">40%</div>
                             </div>
                         </div>
                     </div>
@@ -620,21 +707,21 @@
                 
                 <div class="form-group">
                     <label class="form-label">Nom de la playlist</label>
-                    <input type="text" id="playlistName" placeholder="Ex: Soirée ESME 2025">
+                    <input type="text" id="playlistName" placeholder="Ex: Playlist ESME 2026">
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label">Description (optionnel)</label>
-                    <textarea id="playlistDesc" rows="2" placeholder="Générée avec l'algorithme de recommandation ESME"></textarea>
+                    <label class="form-label">Description (optionnelle)</label>
+                    <textarea id="playlistDesc" rows="2" placeholder="Générée automatiquement par l'algorithme GroupMix ESME."></textarea>
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label">Nombre de morceaux</label>
+                    <label class="form-label">Taille de la playlist</label>
                     <input type="number" id="playlistLimit" value="30" min="10" max="100">
                 </div>
                 
-                <button class="btn btn-primary" onclick="createPlaylist()" style="width: 100%;">
-                    <span>✨</span> Générer la Playlist
+                <button class="btn btn-primary" onclick="createPlaylist()" style="margin-top: 10px;">
+                    <span>✨</span> Générer sur Spotify
                 </button>
                 
                 <div id="result"></div>
@@ -643,10 +730,19 @@
     </div>
     
     <script>
+        // Détermination de l'URL de base pour l'API
+        const API_BASE = (window.location.protocol === 'blob:' || window.location.protocol === 'file:') 
+            ? 'http://localhost:8000' 
+            : '';
+
+        function loginSpotify() {
+            window.location.href = `${API_BASE}/login`;
+        }
+
         // Create animated particles
         function createParticles() {
             const container = document.getElementById('particles');
-            for (let i = 0; i < 30; i++) {
+            for (let i = 0; i < 25; i++) {
                 const particle = document.createElement('div');
                 particle.className = 'particle';
                 particle.style.left = Math.random() * 100 + '%';
@@ -659,10 +755,95 @@
         
         createParticles();
         
-        // Selected recommendation method
         let selectedMethod = 'hybrid';
         let currentUser = null;
         let memberIds = [];
+        let currentRoomId = null;
+
+        function _generateRoomId() {
+            return Math.random().toString(36).slice(2, 10);
+        }
+
+        function _getRoomIdFromUrl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('room_id');
+        }
+
+        function _setRoomInUrl(roomId) {
+            const url = new URL(window.location.href);
+            if (roomId) url.searchParams.set('room_id', roomId);
+            else url.searchParams.delete('room_id');
+            window.history.replaceState({}, document.title, url.toString());
+        }
+
+        function _roomInviteLink(roomId) {
+            const url = new URL(window.location.href);
+            url.pathname = '/ui';
+            url.searchParams.set('room_id', roomId);
+            return url.toString();
+        }
+
+        function updateRoomUI() {
+            const info = document.getElementById('roomInfo');
+            const joinRow = document.getElementById('roomJoinRow');
+            const activeRow = document.getElementById('roomActiveRow');
+            const hint = document.getElementById('roomLinkHint');
+
+            if (!currentRoomId) {
+                info.textContent = 'Aucun salon sélectionné.';
+                joinRow.style.display = 'flex';
+                activeRow.style.display = 'none';
+                hint.style.display = 'none';
+                return;
+            }
+
+            info.innerHTML = `Salon actif : <span style="color: var(--spotify-green); font-weight: 800;">${currentRoomId}</span>`;
+            joinRow.style.display = 'none';
+            activeRow.style.display = 'block';
+            hint.style.display = 'none';
+        }
+
+        function createRoom() {
+            currentRoomId = _generateRoomId();
+            localStorage.setItem('room_id', currentRoomId);
+            _setRoomInUrl(currentRoomId);
+            updateRoomUI();
+            loadMembers();
+        }
+
+        function joinRoom() {
+            const input = document.getElementById('roomIdInput');
+            const value = (input.value || '').trim();
+            if (!value) return;
+            currentRoomId = value;
+            localStorage.setItem('room_id', currentRoomId);
+            _setRoomInUrl(currentRoomId);
+            updateRoomUI();
+            loadMembers();
+        }
+
+        async function copyRoomLink() {
+            if (!currentRoomId) return;
+            const link = _roomInviteLink(currentRoomId);
+            try {
+                await navigator.clipboard.writeText(link);
+                const hint = document.getElementById('roomLinkHint');
+                hint.textContent = `Lien copié : ${link}`;
+                hint.style.display = 'block';
+            } catch (e) {
+                const hint = document.getElementById('roomLinkHint');
+                hint.textContent = `Impossible de copier automatiquement. Voici le lien : ${link}`;
+                hint.style.display = 'block';
+            }
+        }
+
+        function leaveRoom() {
+            currentRoomId = null;
+            localStorage.removeItem('room_id');
+            _setRoomInUrl(null);
+            updateRoomUI();
+            loadMembers();
+        }
         
         function selectOption(element, method) {
             document.querySelectorAll('.option-card').forEach(card => {
@@ -671,7 +852,6 @@
             element.classList.add('selected');
             selectedMethod = method;
             
-            // Afficher/masquer les contrôles hybrides
             const hybridControls = document.getElementById('hybridControls');
             if (method === 'hybrid') {
                 hybridControls.style.display = 'block';
@@ -688,10 +868,12 @@
             document.getElementById('collabWeightValue').textContent = collabWeight + '%';
         }
         
-        // Load members
         async function loadMembers() {
             try {
-                const response = await fetch('/members');
+                const url = currentRoomId
+                    ? `${API_BASE}/members?room_id=${encodeURIComponent(currentRoomId)}`
+                    : `${API_BASE}/members`;
+                const response = await fetch(url);
                 const data = await response.json();
                 const list = document.getElementById('membersList');
                 const countElement = document.getElementById('memberCount');
@@ -704,22 +886,24 @@
                     list.innerHTML = '<li style="color: var(--text-gray); text-align: center; padding: 20px;">Aucun membre connecté</li>';
                     document.getElementById('statusDot').classList.remove('connected');
                     document.getElementById('statusText').textContent = 'Non connecté';
+                    document.getElementById('statusText').style.color = 'var(--text-gray)';
                     currentUser = null;
                 } else {
                     list.innerHTML = data.members.map(m => {
                         const name = m.display_name || m.spotify_id || m;
                         const avatar = m.profile_image ? 
-                            `<img src="${m.profile_image}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">` :
+                            `<img src="${m.profile_image}" style="width: 45px; height: 45px; border-radius: 50%; object-fit: cover;">` :
                             `<div class="member-avatar">${name.charAt(0).toUpperCase()}</div>`;
                         return `
                             <li class="member-item">
                                 ${avatar}
-                                <span>${name}</span>
+                                <span style="font-weight: 600;">${name}</span>
                             </li>
                         `;
                     }).join('');
                     document.getElementById('statusDot').classList.add('connected');
                     document.getElementById('statusText').textContent = 'Connecté';
+                    document.getElementById('statusText').style.color = 'var(--spotify-green)';
                     currentUser = data.members[0]?.spotify_id || data.members[0];
                 }
             } catch (error) {
@@ -727,7 +911,6 @@
             }
         }
         
-        // Create playlist
         async function createPlaylist() {
             const name = document.getElementById('playlistName').value;
             const description = document.getElementById('playlistDesc').value;
@@ -740,10 +923,7 @@
                 return;
             }
             
-            resultDiv.innerHTML = '⏳ Génération en cours avec l\'algorithme ' + 
-                (selectedMethod === 'collaborative' ? 'de filtrage collaboratif' : 
-                 selectedMethod === 'content' ? 'de filtrage par contenu' : 
-                 'hybride') + '...';
+            resultDiv.innerHTML = '⏳ Génération en cours...<br><span style="font-size: 0.85em; color: var(--text-gray);">Analyse de vos préférences musicales via l\'API</span>';
             resultDiv.className = 'result';
             
             if (memberIds.length === 0) {
@@ -755,7 +935,6 @@
             try {
                 const preferences = { method: selectedMethod };
                 
-                // Ajouter les poids pour méthode hybride
                 if (selectedMethod === 'hybrid') {
                     const contentWeight = parseInt(document.getElementById('contentWeight').value) / 100;
                     const collabWeight = parseInt(document.getElementById('collabWeight').value) / 100;
@@ -763,13 +942,14 @@
                     preferences.collab_weight = collabWeight;
                 }
                 
-                const response = await fetch('/generate', {
+                const response = await fetch(`${API_BASE}/generate`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         member_ids: memberIds,
+                        room_id: currentRoomId,
                         name: name,
-                        description: description || "Générée avec l'algorithme ESME",
+                        description: description || "Générée automatiquement par l'algorithme GroupMix ESME.",
                         public: false,
                         limit: limit,
                         preferences: preferences
@@ -782,17 +962,32 @@
                     resultDiv.className = 'result success';
                     let statsHtml = '';
                     if (result.stats) {
-                        statsHtml = `<div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(0, 255, 136, 0.2);">
-                            <div style="font-size: 0.9em; color: rgba(0, 255, 136, 0.8);">
-                                📊 Méthode: ${result.method || selectedMethod} | 
-                                Seeds: ${result.stats.seeds_used || 'N/A'} | 
-                                Candidats: ${result.stats.candidates_evaluated || 'N/A'}
+                        statsHtml = `<div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+                            <div style="font-size: 0.85em; color: var(--text-gray);">
+                                <strong style="color: var(--text-white);">Statistiques de l'algorithme :</strong><br>
+                                Méthode : <span style="color: var(--spotify-green);">${result.method || selectedMethod}</span> &bull; 
+                                Graines (Seeds) : <span style="color: var(--text-white);">${result.stats.seeds_used || 'N/A'}</span> &bull; 
+                                Titres évalués : <span style="color: var(--text-white);">${result.stats.candidates_evaluated || 'N/A'}</span>
+                            </div>
+                        </div>`;
+                    }
+
+                    if (Array.isArray(result.explanations) && result.explanations.length > 0) {
+                        statsHtml += `<div style="margin-top: 12px; padding: 14px; background: rgba(255,255,255,0.06); border-radius: 8px;">
+                            <div style="font-weight: 800; margin-bottom: 8px;">Pourquoi ces titres ?</div>
+                            <div style="color: var(--text-gray); font-size: 0.9em; line-height: 1.5;">
+                                ${result.explanations.map(x => `<div>${x}</div>`).join('')}
                             </div>
                         </div>`;
                     }
                     resultDiv.innerHTML = `
                         ✅ ${result.message}<br>
-                        <a href="${result.url}" target="_blank">🎧 Ouvrir sur Spotify →</a>
+                        <a href="${result.url}" target="_blank">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="margin-right: 5px;">
+                                <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.84.24 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.6.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+                            </svg>
+                            Ouvrir sur Spotify
+                        </a>
                         ${statsHtml}
                     `;
                 } else {
@@ -805,7 +1000,6 @@
             }
         }
         
-        // Vérifier les erreurs OAuth dans l'URL
         function checkOAuthErrors() {
             const urlParams = new URLSearchParams(window.location.search);
             const error = urlParams.get('error');
@@ -817,22 +1011,23 @@
                     resultDiv.className = 'result error';
                     const errorMsg = errorDescription || error;
                     resultDiv.innerHTML = `❌ Erreur d'authentification: ${errorMsg}`;
-                    
-                    // Nettoyer l'URL
                     window.history.replaceState({}, document.title, window.location.pathname);
                 }
             }
         }
         
-        // Load members on startup
         loadMembers();
         checkOAuthErrors();
-        
-        // Refresh members every 10 seconds
         setInterval(loadMembers, 10000);
         
-        // Initialiser la méthode hybride par défaut
         document.addEventListener('DOMContentLoaded', function() {
+            currentRoomId = _getRoomIdFromUrl() || localStorage.getItem('room_id');
+            if (currentRoomId) {
+                localStorage.setItem('room_id', currentRoomId);
+                _setRoomInUrl(currentRoomId);
+            }
+            updateRoomUI();
+
             const hybridOption = document.querySelector('.option-card[onclick*="hybrid"]');
             if (hybridOption) {
                 selectOption(hybridOption, 'hybrid');

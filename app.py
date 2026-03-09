@@ -13,6 +13,9 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+# Gestion des salons (rooms)
+ROOMS = {}
+
 # Tes modules locaux
 from config import APP_SECRET_KEY, assert_config, SPOTIFY_REDIRECT_URI
 from group_playlist import generate_group_playlist
@@ -45,6 +48,7 @@ class FeedbackRequest(BaseModel):
 
 class PlaylistGenerateRequest(BaseModel):
     member_ids: List[str]
+    room_id: Optional[str] = None
     name: str = "Ma Playlist de Groupe"
     description: str = "Générée automatiquement"
     public: bool = False
@@ -80,7 +84,13 @@ def login():
     return RedirectResponse(url=get_auth_url(state=state, scopes=SCOPES))
 
 @app.get("/callback")
-def callback(code: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None, db: Session = Depends(get_session)):
+def callback(
+    request: Request,
+    code: Optional[str] = None,
+    error: Optional[str] = None,
+    error_description: Optional[str] = None,
+    db: Session = Depends(get_session),
+):
     # Gérer les erreurs OAuth (utilisateur refuse, etc.)
     if error:
         error_msg = error_description or error
@@ -136,12 +146,40 @@ def callback(code: Optional[str] = None, error: Optional[str] = None, error_desc
     # Mettre à jour aussi le store SQLite pour compatibilité
     update_member_tokens(spotify_user_id, tokens)
     
-    return RedirectResponse(url="/ui")
+    response = RedirectResponse(url="/ui")
+    # Cookie utilisé pour identifier l'utilisateur courant (rooms, etc.)
+    response.set_cookie(
+        key="spotify_user_id",
+        value=spotify_user_id,
+        httponly=True,
+        samesite="lax",
+        secure=(request.url.scheme == "https"),
+        max_age=60 * 60 * 24 * 30,  # 30 jours
+    )
+    return response
 
 @app.get("/members")
-def members(db: Session = Depends(get_session)):
+def members(request: Request, room_id: Optional[str] = None, db: Session = Depends(get_session)):
     """Retourne la liste des membres connectés avec leurs infos"""
-    users = db.exec(select(User)).all()
+    # Si un room_id est fourni, on ajoute l'utilisateur courant dans la room
+    # (identifié par le cookie "spotify_user_id") puis on ne retourne que les
+    # membres présents dans cette room.
+    if room_id:
+        spotify_user_id = request.cookies.get("spotify_user_id")
+        if spotify_user_id:
+            room_members = ROOMS.setdefault(room_id, [])
+            if spotify_user_id not in room_members:
+                room_members.append(spotify_user_id)
+
+        member_ids = ROOMS.get(room_id, [])
+        if member_ids:
+            users = db.exec(
+                select(User).where(User.spotify_id.in_(member_ids))
+            ).all()
+        else:
+            users = []
+    else:
+        users = db.exec(select(User)).all()
     return {
         "members": [
             {
@@ -156,15 +194,28 @@ def members(db: Session = Depends(get_session)):
 @app.post("/generate")
 async def generate(request: PlaylistGenerateRequest, db: Session = Depends(get_session)):
     """Génère une playlist de groupe avec recommandation avancée"""
-    # Si aucun member_ids fourni, utiliser tous les utilisateurs connectés
-    if not request.member_ids:
+    # Déterminer la liste des membres à partir de la room ou de member_ids
+    member_ids = request.member_ids or []
+
+    # Si une room est spécifiée et existe, on l'utilise comme source de vérité
+    if request.room_id and request.room_id in ROOMS:
+        room_members = ROOMS.get(request.room_id) or []
+        if room_members:
+            member_ids = room_members
+
+    # Si toujours aucune liste de membres, utiliser tous les utilisateurs connectés
+    if not member_ids:
         users = db.exec(select(User)).all()
         if not users:
             raise HTTPException(status_code=400, detail="Aucun utilisateur connecté")
-        request.member_ids = [user.spotify_id for user in users]
+        member_ids = [user.spotify_id for user in users]
     
-    if not request.member_ids:
+    if not member_ids:
         raise HTTPException(status_code=400, detail="member_ids requis")
+
+    # On met à jour l'objet de requête pour que le reste de la logique
+    # continue de fonctionner avec la bonne liste de membres
+    request.member_ids = member_ids
 
     owner_id = request.member_ids[0]
     

@@ -215,6 +215,13 @@ def generate_group_playlist(owner_access_token: str, owner_user_id: str, member_
         logger.info("=" * 60)
         logger.info("✅ PLAYLIST GÉNÉRÉE AVEC SUCCÈS")
         logger.info("=" * 60)
+
+        # Explicabilité de l'IA (Explainable AI)
+        explanations = []
+        if method_used in ("hybrid", "collaborative"):
+            explanations.append("🎧 Certains titres ont été sélectionnés car ils se trouvent au croisement exact des goûts du groupe.")
+        if method_used in ("hybrid", "content", "content-based"):
+            explanations.append("🔥 L'algorithme a trouvé des jumeaux musicaux partageant la même énergie et le même tempo que vos favoris respectifs.")
         
         return {
             "success": True, 
@@ -228,7 +235,8 @@ def generate_group_playlist(owner_access_token: str, owner_user_id: str, member_
                 "candidates_evaluated": len(candidate_track_ids),
                 "content_weight": content_weight,
                 "collab_weight": collab_weight
-            }
+            },
+            "explanations": explanations
         }
     except Exception as e:
         logger.error(f"❌ Failed to create playlist: {e}")
