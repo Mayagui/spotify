@@ -105,51 +105,79 @@ def add_tracks_to_playlist(access_token: str, playlist_id: str, uris: List[str])
     logger.info(f"✅ Tous les titres ajoutés avec succès")
 
 
-def _get_spotify_recommendations(access_token: str, seed_track_ids: List[str],
-                                  seed_artist_ids: List[str], limit: int = 100) -> List[Dict]:
-    """
-    Appelle l'endpoint /v1/recommendations de Spotify pour obtenir
-    de NOUVELLES musiques que les utilisateurs ne connaissent pas encore.
-
-    Spotify limite à 5 seeds au total (tracks + artists combinés).
-    On prend 3 tracks + 2 artistes pour représenter le goût du groupe.
-    """
+def _get_artist_top_tracks(access_token: str, artist_id: str, market: str = "FR") -> List[Dict]:
+    """Récupère les top tracks d'un artiste (endpoint non déprécié)."""
     headers = {"Authorization": f"Bearer {access_token}"}
-
-    # Spotify accepte max 5 seeds au total
-    seeds_tracks = seed_track_ids[:3]
-    seeds_artists = seed_artist_ids[:2]
-
-    params = {
-        "limit": min(limit, 100),  # Spotify max = 100
-    }
-    if seeds_tracks:
-        params["seed_tracks"] = ",".join(seeds_tracks)
-    if seeds_artists:
-        params["seed_artists"] = ",".join(seeds_artists)
-
-    # Sécurité : si on n'a aucun seed, on ne peut pas appeler l'API
-    if not seeds_tracks and not seeds_artists:
-        logger.error("❌ Aucun seed disponible pour les recommandations Spotify")
-        return []
-
     try:
         resp = requests.get(
-            f"{SPOTIFY_API_BASE}/recommendations",
+            f"{SPOTIFY_API_BASE}/artists/{artist_id}/top-tracks",
             headers=headers,
-            params=params,
+            params={"market": market},
             timeout=15
         )
         if resp.ok:
-            tracks = resp.json().get("tracks", [])
-            logger.info(f"✅ Spotify recommendations: {len(tracks)} nouvelles musiques reçues")
-            return tracks
-        else:
-            logger.warning(f"⚠️ Erreur /recommendations: {resp.status_code} - {resp.text}")
-            return []
+            return resp.json().get("tracks", [])
     except Exception as e:
-        logger.error(f"❌ Exception /recommendations: {e}")
+        logger.warning(f"⚠️ artist top-tracks error ({artist_id}): {e}")
+    return []
+
+
+def _get_related_artists(access_token: str, artist_id: str) -> List[str]:
+    """Récupère les artistes similaires à un artiste donné."""
+    headers = {"Authorization": f"Bearer {access_token}"}
+    try:
+        resp = requests.get(
+            f"{SPOTIFY_API_BASE}/artists/{artist_id}/related-artists",
+            headers=headers,
+            timeout=15
+        )
+        if resp.ok:
+            artists = resp.json().get("artists", [])
+            return [a["id"] for a in artists[:5]]
+    except Exception as e:
+        logger.warning(f"⚠️ related-artists error ({artist_id}): {e}")
+    return []
+
+
+def _discover_new_tracks(access_token: str, seed_artist_ids: List[str], limit: int = 100) -> List[Dict]:
+    """
+    Découvre de nouvelles musiques via les top tracks des artistes favoris
+    et leurs artistes similaires.
+    Remplace /v1/recommendations (déprécié fin 2024).
+    """
+    if not seed_artist_ids:
         return []
+
+    candidate_tracks: Dict[str, Dict] = {}
+
+    # 1) Top tracks des artistes favoris du groupe
+    for artist_id in seed_artist_ids[:5]:
+        tracks = _get_artist_top_tracks(access_token, artist_id)
+        for t in tracks:
+            if t.get("id"):
+                candidate_tracks[t["id"]] = t
+
+    # 2) Top tracks des artistes similaires (pour aller au-delà des favoris directs)
+    related_artist_ids: List[str] = []
+    for artist_id in seed_artist_ids[:3]:
+        related_artist_ids.extend(_get_related_artists(access_token, artist_id))
+
+    seen_related = set(seed_artist_ids)
+    for artist_id in related_artist_ids:
+        if artist_id in seen_related:
+            continue
+        seen_related.add(artist_id)
+        tracks = _get_artist_top_tracks(access_token, artist_id)
+        for t in tracks:
+            if t.get("id"):
+                candidate_tracks[t["id"]] = t
+        if len(candidate_tracks) >= limit * 2:
+            break
+
+    result = list(candidate_tracks.values())
+    random.shuffle(result)  # mélanger pour éviter de toujours prendre les mêmes
+    logger.info(f"✅ Candidats découverts (artistes + similaires): {len(result)} tracks")
+    return result[:limit]
 
 
 def generate_group_playlist(owner_access_token: str, owner_user_id: str, member_tokens: List[str],
@@ -228,19 +256,18 @@ def generate_group_playlist(owner_access_token: str, owner_user_id: str, member_
     logger.info(f"🎯 Seeds artistes: {seed_artist_ids}")
 
     # ----------------------------------------------------------------
-    # 2) Appel à /v1/recommendations → nouvelles musiques inconnues
+    # 2) Découvrir de nouvelles musiques via les artistes favoris
+    #    (/v1/recommendations est déprécié depuis fin 2024)
     # ----------------------------------------------------------------
-    logger.info("🔍 Appel Spotify /recommendations pour découvrir de nouvelles musiques...")
-    spotify_recommendations = _get_spotify_recommendations(
+    logger.info("🔍 Découverte de nouvelles musiques via top-tracks des artistes favoris...")
+    spotify_recommendations = _discover_new_tracks(
         access_token=owner_access_token,
-        seed_track_ids=seed_track_ids,
         seed_artist_ids=seed_artist_ids,
-        limit=100  # On récupère 100 candidats pour avoir de la marge
+        limit=max(limit * 4, 100)  # Large marge pour le filtrage
     )
 
     if not spotify_recommendations:
-        logger.warning("⚠️ /recommendations n'a rien retourné, fallback sur les favoris existants")
-        # Fallback : si l'API échoue, on utilise les favoris (comportement dégradé)
+        logger.warning("⚠️ Aucun candidat trouvé, fallback sur les favoris existants")
         unique_tracks = {t['id']: t for t in all_top_tracks if t.get('id')}
         tracks_list = list(unique_tracks.values())
         random.shuffle(tracks_list)
@@ -337,13 +364,13 @@ def generate_group_playlist(owner_access_token: str, owner_user_id: str, member_
             "stats": {
                 "seeds_tracks": len(seed_track_ids),
                 "seeds_artists": len(seed_artist_ids),
-                "candidates_from_spotify": len(spotify_recommendations) if spotify_recommendations else 0,
+                "candidates_discovered": len(spotify_recommendations) if spotify_recommendations else 0,
                 "known_tracks_excluded": len(known_track_ids),
             },
             "explanations": [
-                "🔍 Les seeds (artistes et titres favoris du groupe) ont guidé Spotify vers de nouvelles musiques.",
+                "🎤 Les artistes favoris du groupe ont servi de point de départ.",
+                "🔗 Les artistes similaires ont élargi la sélection à de nouveaux sons.",
                 "🎵 Seules des musiques inconnues des membres ont été ajoutées à la playlist.",
-                "🔥 Le filtrage audio a sélectionné les titres les plus cohérents avec les goûts du groupe.",
             ]
         }
     except Exception as e:
