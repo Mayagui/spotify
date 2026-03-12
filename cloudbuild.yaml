@@ -14,6 +14,7 @@ steps:
       - 'gcr.io/$PROJECT_ID/spotify-groupmix:$COMMIT_SHA'
 
   # Étape 3 : Déploiement sur Cloud Run
+  # Les secrets sont montés directement depuis Secret Manager par Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -25,19 +26,12 @@ steps:
       - '--platform=managed'
       - '--allow-unauthenticated'
       - '--port=8000'
-      - '--set-env-vars=DATABASE_URL=$$DATABASE_URL'
-      - '--set-env-vars=SPOTIFY_CLIENT_ID=$$SPOTIFY_CLIENT_ID'
-      - '--set-env-vars=SPOTIFY_CLIENT_SECRET=$$SPOTIFY_CLIENT_SECRET'
-      - '--set-env-vars=SPOTIFY_REDIRECT_URI=$$SPOTIFY_REDIRECT_URI'
-      - '--set-env-vars=TOKEN_ENCRYPTION_KEY=$$TOKEN_ENCRYPTION_KEY'
-      - '--set-env-vars=APP_SECRET_KEY=$$APP_SECRET_KEY'
-    secretEnv:
-      - 'DATABASE_URL'
-      - 'SPOTIFY_CLIENT_ID'
-      - 'SPOTIFY_CLIENT_SECRET'
-      - 'SPOTIFY_REDIRECT_URI'
-      - 'TOKEN_ENCRYPTION_KEY'
-      - 'APP_SECRET_KEY'
+      - '--set-secrets=DATABASE_URL=DATABASE_URL:latest'
+      - '--set-secrets=SPOTIFY_CLIENT_ID=SPOTIFY_CLIENT_ID:latest'
+      - '--set-secrets=SPOTIFY_CLIENT_SECRET=SPOTIFY_CLIENT_SECRET:latest'
+      - '--set-secrets=SPOTIFY_REDIRECT_URI=SPOTIFY_REDIRECT_URI:latest'
+      - '--set-secrets=TOKEN_ENCRYPTION_KEY=TOKEN_ENCRYPTION_KEY:latest'
+      - '--set-secrets=APP_SECRET_KEY=APP_SECRET_KEY:latest'
 
 images:
   - 'gcr.io/$PROJECT_ID/spotify-groupmix:$COMMIT_SHA'
@@ -46,20 +40,3 @@ logsBucket: 'gs://spotify-groupmix-logs'
 
 options:
   logging: GCS_ONLY
-
-# Les secrets sont lus depuis Google Secret Manager
-# Pour les créer : gcloud secrets create SPOTIFY_CLIENT_ID --data-file=-
-availableSecrets:
-  secretManager:
-    - versionName: projects/$PROJECT_ID/secrets/DATABASE_URL/versions/latest
-      env: 'DATABASE_URL'
-    - versionName: projects/$PROJECT_ID/secrets/SPOTIFY_CLIENT_ID/versions/latest
-      env: 'SPOTIFY_CLIENT_ID'
-    - versionName: projects/$PROJECT_ID/secrets/SPOTIFY_CLIENT_SECRET/versions/latest
-      env: 'SPOTIFY_CLIENT_SECRET'
-    - versionName: projects/$PROJECT_ID/secrets/SPOTIFY_REDIRECT_URI/versions/latest
-      env: 'SPOTIFY_REDIRECT_URI'
-    - versionName: projects/$PROJECT_ID/secrets/TOKEN_ENCRYPTION_KEY/versions/latest
-      env: 'TOKEN_ENCRYPTION_KEY'
-    - versionName: projects/$PROJECT_ID/secrets/APP_SECRET_KEY/versions/latest
-      env: 'APP_SECRET_KEY'
