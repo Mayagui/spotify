@@ -139,44 +139,45 @@ def _get_related_artists(access_token: str, artist_id: str) -> List[str]:
     return []
 
 
-def _discover_new_tracks(access_token: str, seed_artist_ids: List[str], limit: int = 100) -> List[Dict]:
+def _discover_new_tracks(access_token: str, seed_artist_ids: List[str],
+                         known_artist_ids: set, limit: int = 100) -> List[Dict]:
     """
-    Découvre de nouvelles musiques via les top tracks des artistes favoris
-    et leurs artistes similaires.
-    Remplace /v1/recommendations (déprécié fin 2024).
+    Découvre de nouvelles musiques UNIQUEMENT via les artistes similaires
+    aux artistes favoris — jamais via les favoris eux-mêmes.
+
+    Logique :
+      - Les artistes favoris = seeds pour trouver des artistes similaires
+      - On ne prend des tracks QUE chez les artistes similaires (inconnus de l'utilisateur)
     """
     if not seed_artist_ids:
         return []
 
     candidate_tracks: Dict[str, Dict] = {}
 
-    # 1) Top tracks des artistes favoris du groupe
-    for artist_id in seed_artist_ids[:5]:
-        tracks = _get_artist_top_tracks(access_token, artist_id)
-        for t in tracks:
-            if t.get("id"):
-                candidate_tracks[t["id"]] = t
-
-    # 2) Top tracks des artistes similaires (pour aller au-delà des favoris directs)
+    # Trouver les artistes similaires à chaque artiste favori
     related_artist_ids: List[str] = []
-    for artist_id in seed_artist_ids[:3]:
+    for artist_id in seed_artist_ids:
         related_artist_ids.extend(_get_related_artists(access_token, artist_id))
 
-    seen_related = set(seed_artist_ids)
+    # Exclure les artistes déjà connus de l'utilisateur
+    seen = set(known_artist_ids)
     for artist_id in related_artist_ids:
-        if artist_id in seen_related:
+        if artist_id in seen:
             continue
-        seen_related.add(artist_id)
+        seen.add(artist_id)
         tracks = _get_artist_top_tracks(access_token, artist_id)
         for t in tracks:
-            if t.get("id"):
-                candidate_tracks[t["id"]] = t
+            tid = t.get("id")
+            # Exclure aussi les tracks dont l'artiste principal est un artiste connu
+            track_artist_ids = {a["id"] for a in t.get("artists", [])}
+            if tid and not track_artist_ids.intersection(known_artist_ids):
+                candidate_tracks[tid] = t
         if len(candidate_tracks) >= limit * 2:
             break
 
     result = list(candidate_tracks.values())
-    random.shuffle(result)  # mélanger pour éviter de toujours prendre les mêmes
-    logger.info(f"✅ Candidats découverts (artistes + similaires): {len(result)} tracks")
+    random.shuffle(result)
+    logger.info(f"✅ Candidats découverts (artistes similaires inconnus): {len(result)} tracks")
     return result[:limit]
 
 
@@ -241,29 +242,26 @@ def generate_group_playlist(owner_access_token: str, owner_user_id: str, member_
     sorted_seeds = sorted(track_popularity.keys(), key=lambda x: track_popularity[x], reverse=True)
     seed_track_ids = sorted_seeds[:3]
 
-    # Seeds artistes : IDs uniques des top artistes du groupe
-    seen_artists = set()
-    seed_artist_ids = []
-    for artist in all_top_artists:
-        aid = artist.get('id')
-        if aid and aid not in seen_artists:
-            seen_artists.add(aid)
-            seed_artist_ids.append(aid)
-            if len(seed_artist_ids) == 2:
-                break
+    # Tous les artistes connus du groupe (pour les exclure des candidats)
+    known_artist_ids = {a.get('id') for a in all_top_artists if a.get('id')}
+
+    # Seeds artistes : tous les top artistes du groupe (pas limité à 2)
+    seed_artist_ids = list(known_artist_ids)
 
     logger.info(f"🎯 Seeds tracks: {seed_track_ids}")
-    logger.info(f"🎯 Seeds artistes: {seed_artist_ids}")
+    logger.info(f"🎯 Seeds artistes (connus, utilisés pour trouver similaires): {len(seed_artist_ids)}")
 
     # ----------------------------------------------------------------
-    # 2) Découvrir de nouvelles musiques via les artistes favoris
+    # 2) Découvrir de nouvelles musiques via les artistes SIMILAIRES
+    #    On n'utilise JAMAIS les tracks des artistes favoris eux-mêmes.
     #    (/v1/recommendations est déprécié depuis fin 2024)
     # ----------------------------------------------------------------
-    logger.info("🔍 Découverte de nouvelles musiques via top-tracks des artistes favoris...")
+    logger.info("🔍 Découverte via artistes similaires aux favoris...")
     spotify_recommendations = _discover_new_tracks(
         access_token=owner_access_token,
         seed_artist_ids=seed_artist_ids,
-        limit=max(limit * 4, 100)  # Large marge pour le filtrage
+        known_artist_ids=known_artist_ids,
+        limit=max(limit * 4, 100)
     )
 
     if not spotify_recommendations:
