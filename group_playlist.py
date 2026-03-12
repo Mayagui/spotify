@@ -364,7 +364,7 @@ def generate_group_playlist(owner_access_token: str, owner_user_id: str, member_
             "stats": {
                 "seeds_tracks": len(seed_track_ids),
                 "seeds_artists": len(seed_artist_ids),
-                "candidates_discovered": len(spotify_recommendations) if spotify_recommendations else 0,
+                "candidates_from_spotify": len(spotify_recommendations) if spotify_recommendations else 0,
                 "known_tracks_excluded": len(known_track_ids),
             },
             "explanations": [
