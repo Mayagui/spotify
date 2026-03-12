@@ -9,6 +9,7 @@ __pycache__/
 
 # Local data / logs / binaries
 app.db
+spotify.db
 cf_tunnel.log
 cloudflared
 cloudflared.tgz

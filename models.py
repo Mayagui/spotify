@@ -61,12 +61,31 @@ class UserFeedback(SQLModel, table=True):
 
 class ListeningHistory(SQLModel, table=True):
     __tablename__ = "listening_history"
-    
+
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="spotify_users.id")
     track_id: int = Field(foreign_key="tracks.id")
     played_at: datetime
     duration_ms: Optional[int] = None
-    
+
     user: User = Relationship(back_populates="listening_history")
     track: Track = Relationship(back_populates="listening_history")
+
+
+class Room(SQLModel, table=True):
+    __tablename__ = "rooms"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    # Code court partageable entre amis, ex: "A3X9KL"
+    room_code: str = Field(unique=True, index=True)
+    creator_spotify_id: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class RoomMember(SQLModel, table=True):
+    __tablename__ = "room_members"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    room_id: int = Field(foreign_key="rooms.id")
+    spotify_id: str
+    joined_at: datetime = Field(default_factory=datetime.utcnow)

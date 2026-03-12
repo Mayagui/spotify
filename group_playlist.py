@@ -85,159 +85,235 @@ def add_tracks_to_playlist(access_token: str, playlist_id: str, uris: List[str])
     logger.info(f"✅ Tous les titres ajoutés avec succès")
 
 
-def generate_group_playlist(owner_access_token: str, owner_user_id: str, member_tokens: List[str], 
+def _get_spotify_recommendations(access_token: str, seed_track_ids: List[str],
+                                  seed_artist_ids: List[str], limit: int = 100) -> List[Dict]:
+    """
+    Appelle l'endpoint /v1/recommendations de Spotify pour obtenir
+    de NOUVELLES musiques que les utilisateurs ne connaissent pas encore.
+
+    Spotify limite à 5 seeds au total (tracks + artists combinés).
+    On prend 3 tracks + 2 artistes pour représenter le goût du groupe.
+    """
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    # Spotify accepte max 5 seeds au total
+    seeds_tracks = seed_track_ids[:3]
+    seeds_artists = seed_artist_ids[:2]
+
+    params = {
+        "limit": min(limit, 100),  # Spotify max = 100
+    }
+    if seeds_tracks:
+        params["seed_tracks"] = ",".join(seeds_tracks)
+    if seeds_artists:
+        params["seed_artists"] = ",".join(seeds_artists)
+
+    # Sécurité : si on n'a aucun seed, on ne peut pas appeler l'API
+    if not seeds_tracks and not seeds_artists:
+        logger.error("❌ Aucun seed disponible pour les recommandations Spotify")
+        return []
+
+    try:
+        resp = requests.get(
+            f"{SPOTIFY_API_BASE}/recommendations",
+            headers=headers,
+            params=params,
+            timeout=15
+        )
+        if resp.ok:
+            tracks = resp.json().get("tracks", [])
+            logger.info(f"✅ Spotify recommendations: {len(tracks)} nouvelles musiques reçues")
+            return tracks
+        else:
+            logger.warning(f"⚠️ Erreur /recommendations: {resp.status_code} - {resp.text}")
+            return []
+    except Exception as e:
+        logger.error(f"❌ Exception /recommendations: {e}")
+        return []
+
+
+def generate_group_playlist(owner_access_token: str, owner_user_id: str, member_tokens: List[str],
                            name: str, description: str, public: bool, preferences: Dict[str, Any],
                            session: Session, limit: int = 50) -> Dict[str, Any]:
     """
-    Fonction principale - Version améliorée avec recommandation hybride.
-    Combine content-based et collaborative filtering pour générer une playlist optimale.
+    Fonction principale.
+    Génère une playlist avec de NOUVELLES musiques (pas les favoris existants des users).
+
+    Étapes :
+      1. Récupère les top tracks et top artistes de chaque membre → seeds uniquement
+      2. Appelle /v1/recommendations avec ces seeds → nouvelles musiques inconnues
+      3. Filtre les musiques déjà connues du groupe
+      4. Applique le content-based filtering sur les nouveaux candidats
+      5. Crée la playlist avec ces nouvelles musiques
     """
     logger.info("=" * 60)
-    logger.info("🎵 DÉBUT GÉNÉRATION PLAYLIST AVEC RECOMMANDATION AVANCÉE")
+    logger.info("🎵 GÉNÉRATION PLAYLIST — NOUVELLES MUSIQUES")
     logger.info(f"Owner ID: {owner_user_id}")
     logger.info(f"Nombre de membres: {len(member_tokens) + 1}")
     logger.info(f"Préférences: {preferences}")
     logger.info("=" * 60)
-    
-    # Initialiser le service de recommandation
+
     rec_service = RecommendationService(session)
-    
-    all_top_tracks = []
     all_tokens = [owner_access_token] + member_tokens
-    
-    # 1) Récupérer les top tracks de tous les membres
-    logger.info(f"📥 Récupération des données pour {len(all_tokens)} utilisateur(s)")
-    
+
+    # ----------------------------------------------------------------
+    # 1) Récupérer les top tracks et top artistes de tous les membres
+    #    Ces données servent UNIQUEMENT de seeds — pas de candidats.
+    # ----------------------------------------------------------------
+    all_top_tracks = []
+    all_top_artists = []
+
     for i, token in enumerate(all_tokens):
         logger.info(f"--- Utilisateur {i+1}/{len(all_tokens)} ---")
-        tracks = _get_top_items(token, "tracks", limit=50)
+        tracks = _get_top_items(token, "tracks", limit=20)
+        artists = _get_top_items(token, "artists", limit=10)
         all_top_tracks.extend(tracks)
-    
-    logger.info(f"📊 Total récupéré: {len(all_top_tracks)} tracks")
-    
+        all_top_artists.extend(artists)
+
     if not all_top_tracks:
-        logger.error("❌ Aucun track récupéré")
         return {"error": "Impossible de récupérer les morceaux favoris. Vérifiez vos permissions."}
-    
-    # 2) Dédupliquer et préparer les seeds
-    unique_tracks = {}
-    for track in all_top_tracks:
-        track_id = track.get('id')
-        if track_id and track_id not in unique_tracks:
-            unique_tracks[track_id] = track
-    
-    tracks_list = list(unique_tracks.values())
-    seed_track_ids = [t['id'] for t in tracks_list[:10]]  # Top 10 comme seeds
-    candidate_track_ids = [t['id'] for t in tracks_list]
-    
-    logger.info(f"🎯 {len(seed_track_ids)} seeds sélectionnés")
-    logger.info(f"📋 {len(candidate_track_ids)} candidats disponibles")
-    
-    # 3) Récupérer l'ID utilisateur en DB pour collaborative filtering
-    user_db_id = None
-    statement = select(User).where(User.spotify_id == owner_user_id)
-    owner_user = session.exec(statement).first()
-    if owner_user:
-        user_db_id = owner_user.id
-    
-    # 4) Récupérer les audio features et sauvegarder en DB
-    logger.info("🎼 Récupération des audio features...")
-    features_dict = rec_service.get_audio_features(owner_access_token, seed_track_ids)
-    
-    # Sauvegarder les tracks en DB avec leurs features
-    for track_data in tracks_list[:50]:  # Limiter pour éviter trop de requêtes
-        track_id = track_data.get('id')
-        if track_id in features_dict:
-            rec_service.save_track_features(track_data, features_dict[track_id])
-    
-    # 5) Générer recommandations HYBRIDES
-    method = preferences.get("method", "hybrid")  # "hybrid", "content", "collaborative", "simple"
-    content_weight = float(preferences.get("content_weight", 0.6))
-    collab_weight = float(preferences.get("collab_weight", 0.4))
-    
-    logger.info(f"🔮 Méthode de recommandation: {method}")
-    
-    if method == "hybrid" and user_db_id:
-        # Recommandation hybride (content + collaborative)
-        recommended_ids = rec_service.hybrid_recommendations(
-            user_id=user_db_id,
-            seed_tracks=seed_track_ids,
-            access_token=owner_access_token,
-            candidate_tracks=candidate_track_ids,
-            content_weight=content_weight,
-            collab_weight=collab_weight,
-            top_k=limit
-        )
-        method_used = "hybrid"
-    elif method == "content":
-        # Content-based uniquement
-        recommended_ids = rec_service.content_based_recommendations(
-            seed_tracks=seed_track_ids,
-            access_token=owner_access_token,
-            candidate_tracks=candidate_track_ids,
-            top_k=limit
-        )
-        method_used = "content-based"
-    elif method == "collaborative" and user_db_id:
-        # Collaborative uniquement
-        collab_track_ids = rec_service.collaborative_recommendations(user_db_id, top_k=limit)
-        tracks_dict = {t.id: t.spotify_id for t in session.exec(select(Track)).all()}
-        recommended_ids = [tracks_dict.get(tid, "") for tid in collab_track_ids if tid in tracks_dict]
-        method_used = "collaborative"
+
+    # Dédupliquer les favoris connus (pour les exclure plus tard)
+    known_track_ids = {t['id'] for t in all_top_tracks if t.get('id')}
+
+    # Sélectionner les seeds : tracks et artistes les plus représentatifs du groupe
+    # On utilise les tracks qui apparaissent dans les favoris de plusieurs membres
+    track_popularity: Dict[str, int] = {}
+    for t in all_top_tracks:
+        tid = t.get('id')
+        if tid:
+            track_popularity[tid] = track_popularity.get(tid, 0) + 1
+
+    # Trier par popularité dans le groupe (les tracks communs à plusieurs membres en premier)
+    sorted_seeds = sorted(track_popularity.keys(), key=lambda x: track_popularity[x], reverse=True)
+    seed_track_ids = sorted_seeds[:3]
+
+    # Seeds artistes : IDs uniques des top artistes du groupe
+    seen_artists = set()
+    seed_artist_ids = []
+    for artist in all_top_artists:
+        aid = artist.get('id')
+        if aid and aid not in seen_artists:
+            seen_artists.add(aid)
+            seed_artist_ids.append(aid)
+            if len(seed_artist_ids) == 2:
+                break
+
+    logger.info(f"🎯 Seeds tracks: {seed_track_ids}")
+    logger.info(f"🎯 Seeds artistes: {seed_artist_ids}")
+
+    # ----------------------------------------------------------------
+    # 2) Appel à /v1/recommendations → nouvelles musiques inconnues
+    # ----------------------------------------------------------------
+    logger.info("🔍 Appel Spotify /recommendations pour découvrir de nouvelles musiques...")
+    spotify_recommendations = _get_spotify_recommendations(
+        access_token=owner_access_token,
+        seed_track_ids=seed_track_ids,
+        seed_artist_ids=seed_artist_ids,
+        limit=100  # On récupère 100 candidats pour avoir de la marge
+    )
+
+    if not spotify_recommendations:
+        logger.warning("⚠️ /recommendations n'a rien retourné, fallback sur les favoris existants")
+        # Fallback : si l'API échoue, on utilise les favoris (comportement dégradé)
+        unique_tracks = {t['id']: t for t in all_top_tracks if t.get('id')}
+        tracks_list = list(unique_tracks.values())
+        random.shuffle(tracks_list)
+        recommended_ids = [t['id'] for t in tracks_list[:limit]]
+        method_used = "simple-fallback"
     else:
-        # Fallback: méthode simple (déduplication + shuffle)
-        random.shuffle(tracks_list)
-        recommended_ids = [t['id'] for t in tracks_list[:limit]]
-        method_used = "simple"
-    
-    if not recommended_ids:
-        logger.warning("⚠️ Aucune recommandation générée, utilisation de la méthode simple")
-        random.shuffle(tracks_list)
-        recommended_ids = [t['id'] for t in tracks_list[:limit]]
-        method_used = "simple"
-    
-    logger.info(f"✅ {len(recommended_ids)} recommandations générées avec méthode: {method_used}")
-    
-    # 6) Convertir en URIs Spotify
+        # ----------------------------------------------------------------
+        # 3) Filtrer les musiques déjà connues du groupe
+        #    On ne veut QUE des musiques nouvelles dans la playlist.
+        # ----------------------------------------------------------------
+        new_tracks = [t for t in spotify_recommendations if t.get('id') not in known_track_ids]
+        logger.info(f"🧹 Après filtrage des musiques connues: {len(new_tracks)} nouveaux candidats")
+
+        # Si presque tout a été filtré, on garde quand même quelques recommandations
+        if len(new_tracks) < 10:
+            logger.warning("⚠️ Peu de nouvelles musiques après filtrage, on conserve aussi les recommandations connues")
+            new_tracks = spotify_recommendations
+
+        candidate_track_ids = [t['id'] for t in new_tracks]
+
+        # ----------------------------------------------------------------
+        # 4) Affiner avec le content-based filtering
+        #    On classe ces nouveaux candidats par similarité audio avec les seeds.
+        # ----------------------------------------------------------------
+        method = preferences.get("method", "content")
+        content_weight = float(preferences.get("content_weight", 0.6))
+        collab_weight = float(preferences.get("collab_weight", 0.4))
+
+        logger.info(f"🔮 Affinement avec méthode: {method}")
+
+        # Récupérer l'ID en DB pour le collaborative filtering
+        user_db_id = None
+        owner_db = session.exec(select(User).where(User.spotify_id == owner_user_id)).first()
+        if owner_db:
+            user_db_id = owner_db.id
+
+        # Sauvegarder les nouveaux candidats en DB pour enrichir le modèle
+        features_dict = rec_service.get_audio_features(owner_access_token, candidate_track_ids[:50])
+        for track_data in new_tracks[:50]:
+            tid = track_data.get('id')
+            if tid and tid in features_dict:
+                rec_service.save_track_features(track_data, features_dict[tid])
+
+        if method in ("hybrid", "content"):
+            recommended_ids = rec_service.content_based_recommendations(
+                seed_tracks=seed_track_ids,
+                access_token=owner_access_token,
+                candidate_tracks=candidate_track_ids,
+                top_k=limit
+            )
+            method_used = method
+        else:
+            # Méthode simple : on prend les recommandations Spotify dans l'ordre
+            recommended_ids = candidate_track_ids[:limit]
+            method_used = "spotify-recommendations"
+
+        if not recommended_ids:
+            # Dernier recours : prendre les candidats dans l'ordre Spotify
+            recommended_ids = candidate_track_ids[:limit]
+            method_used = "spotify-recommendations"
+
+    logger.info(f"✅ {len(recommended_ids)} musiques sélectionnées avec méthode: {method_used}")
+
+    # ----------------------------------------------------------------
+    # 5) Créer la playlist Spotify et y ajouter les nouvelles musiques
+    # ----------------------------------------------------------------
     uris = [f"spotify:track:{tid}" for tid in recommended_ids if tid]
-    
+
     if not uris:
-        logger.error("❌ Aucun URI valide")
         return {"error": "Aucun morceau valide trouvé"}
-    
-    logger.info(f"🎶 {len(uris)} URIs collectés")
-    
-    # 7) Créer la playlist et ajouter les titres
+
     try:
         playlist_id = create_playlist(owner_access_token, owner_user_id, name, description, public)
         add_tracks_to_playlist(owner_access_token, playlist_id, uris)
-        
+
         logger.info("=" * 60)
-        logger.info("✅ PLAYLIST GÉNÉRÉE AVEC SUCCÈS")
+        logger.info("✅ PLAYLIST DE NOUVELLES MUSIQUES GÉNÉRÉE AVEC SUCCÈS")
         logger.info("=" * 60)
 
-        # Explicabilité de l'IA (Explainable AI)
-        explanations = []
-        if method_used in ("hybrid", "collaborative"):
-            explanations.append("🎧 Certains titres ont été sélectionnés car ils se trouvent au croisement exact des goûts du groupe.")
-        if method_used in ("hybrid", "content", "content-based"):
-            explanations.append("🔥 L'algorithme a trouvé des jumeaux musicaux partageant la même énergie et le même tempo que vos favoris respectifs.")
-        
         return {
-            "success": True, 
-            "playlist_id": playlist_id, 
+            "success": True,
+            "playlist_id": playlist_id,
             "track_count": len(uris),
             "url": f"https://open.spotify.com/playlist/{playlist_id}",
-            "message": f"Playlist créée avec {len(uris)} morceaux",
+            "message": f"Playlist créée avec {len(uris)} nouvelles musiques",
             "method": method_used,
             "stats": {
-                "seeds_used": len(seed_track_ids),
-                "candidates_evaluated": len(candidate_track_ids),
-                "content_weight": content_weight,
-                "collab_weight": collab_weight
+                "seeds_tracks": len(seed_track_ids),
+                "seeds_artists": len(seed_artist_ids),
+                "candidates_from_spotify": len(spotify_recommendations) if spotify_recommendations else 0,
+                "known_tracks_excluded": len(known_track_ids),
             },
-            "explanations": explanations
+            "explanations": [
+                "🔍 Les seeds (artistes et titres favoris du groupe) ont guidé Spotify vers de nouvelles musiques.",
+                "🎵 Seules des musiques inconnues des membres ont été ajoutées à la playlist.",
+                "🔥 Le filtrage audio a sélectionné les titres les plus cohérents avec les goûts du groupe.",
+            ]
         }
     except Exception as e:
-        logger.error(f"❌ Failed to create playlist: {e}")
+        logger.error(f"❌ Erreur création playlist: {e}")
         return {"error": f"Erreur finale: {str(e)}"}

@@ -13,16 +13,12 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-# Gestion des salons (rooms)
-ROOMS = {}
-
 # Tes modules locaux
 from config import APP_SECRET_KEY, assert_config, SPOTIFY_REDIRECT_URI
 from group_playlist import generate_group_playlist
 from spotify_oauth import get_auth_url, exchange_code_for_token, get_current_user_profile, get_valid_access_token
-from store import list_member_ids, get_member_tokens, update_member_tokens
 from database import create_db_and_tables, get_session
-from models import User, Track, UserFeedback, ListeningHistory
+from models import User, Track, UserFeedback, ListeningHistory, Room, RoomMember
 from recommendation_service import RecommendationService
 
 # --- CONFIGURATION ---
@@ -79,14 +75,24 @@ def debug_config():
     }
 
 @app.get("/login")
-def login():
+def login(request: Request):
     state = secrets.token_urlsafe(16)
-    return RedirectResponse(url=get_auth_url(state=state, scopes=SCOPES))
+    response = RedirectResponse(url=get_auth_url(state=state, scopes=SCOPES))
+    response.set_cookie(
+        key="oauth_state",
+        value=state,
+        httponly=True,
+        samesite="lax",
+        secure=(request.url.scheme == "https"),
+        max_age=300,  # 5 minutes : largement suffisant pour finir le flow OAuth
+    )
+    return response
 
 @app.get("/callback")
 def callback(
     request: Request,
     code: Optional[str] = None,
+    state: Optional[str] = None,
     error: Optional[str] = None,
     error_description: Optional[str] = None,
     db: Session = Depends(get_session),
@@ -96,7 +102,15 @@ def callback(
         error_msg = error_description or error
         logger.error(f"Erreur OAuth: {error} - {error_msg}")
         return RedirectResponse(url=f"/ui?error={error}&error_description={error_msg}")
-    
+
+    # Vérifier le state anti-CSRF :
+    # Le state reçu de Spotify doit correspondre à celui qu'on a mis dans le cookie au moment du /login.
+    # Si ce n'est pas le cas, c'est une tentative d'attaque ou une requête invalide.
+    expected_state = request.cookies.get("oauth_state")
+    if not expected_state or state != expected_state:
+        logger.error(f"State OAuth invalide (reçu: {state!r}, attendu: {expected_state!r})")
+        return RedirectResponse(url="/ui?error=invalid_state&error_description=Requête invalide, veuillez réessayer")
+
     # Vérifier que le code est présent
     if not code:
         logger.error("Pas de code reçu de Spotify")
@@ -142,10 +156,7 @@ def callback(
         db.add(new_user)
 
     db.commit()
-    
-    # Mettre à jour aussi le store SQLite pour compatibilité
-    update_member_tokens(spotify_user_id, tokens)
-    
+
     response = RedirectResponse(url="/ui")
     # Cookie utilisé pour identifier l'utilisateur courant (rooms, etc.)
     response.set_cookie(
@@ -156,30 +167,80 @@ def callback(
         secure=(request.url.scheme == "https"),
         max_age=60 * 60 * 24 * 30,  # 30 jours
     )
+    # Supprimer le cookie anti-CSRF : il a rempli son rôle
+    response.delete_cookie("oauth_state")
     return response
 
-@app.get("/members")
-def members(request: Request, room_id: Optional[str] = None, db: Session = Depends(get_session)):
-    """Retourne la liste des membres connectés avec leurs infos"""
-    # Si un room_id est fourni, on ajoute l'utilisateur courant dans la room
-    # (identifié par le cookie "spotify_user_id") puis on ne retourne que les
-    # membres présents dans cette room.
-    if room_id:
-        spotify_user_id = request.cookies.get("spotify_user_id")
-        if spotify_user_id:
-            room_members = ROOMS.setdefault(room_id, [])
-            if spotify_user_id not in room_members:
-                room_members.append(spotify_user_id)
+@app.post("/rooms")
+def create_room(request: Request, db: Session = Depends(get_session)):
+    """Crée une nouvelle room et retourne son code partageable."""
+    spotify_user_id = request.cookies.get("spotify_user_id")
+    if not spotify_user_id:
+        raise HTTPException(status_code=401, detail="Non connecté")
 
-        member_ids = ROOMS.get(room_id, [])
-        if member_ids:
-            users = db.exec(
-                select(User).where(User.spotify_id.in_(member_ids))
-            ).all()
-        else:
-            users = []
+    # Générer un code court et lisible, ex: "A3X9KL"
+    room_code = secrets.token_urlsafe(4).upper()[:6]
+
+    # S'assurer de l'unicité (collision très improbable mais on vérifie)
+    while db.exec(select(Room).where(Room.room_code == room_code)).first():
+        room_code = secrets.token_urlsafe(4).upper()[:6]
+
+    room = Room(room_code=room_code, creator_spotify_id=spotify_user_id)
+    db.add(room)
+    db.commit()
+    db.refresh(room)
+
+    # Le créateur rejoint automatiquement sa room
+    db.add(RoomMember(room_id=room.id, spotify_id=spotify_user_id))
+    db.commit()
+
+    return {"room_code": room_code}
+
+
+@app.post("/rooms/{room_code}/join")
+def join_room(room_code: str, request: Request, db: Session = Depends(get_session)):
+    """Permet à l'utilisateur connecté de rejoindre une room existante."""
+    spotify_user_id = request.cookies.get("spotify_user_id")
+    if not spotify_user_id:
+        raise HTTPException(status_code=401, detail="Non connecté")
+
+    room = db.exec(select(Room).where(Room.room_code == room_code)).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room introuvable")
+
+    # N'ajouter que si pas déjà membre
+    already = db.exec(
+        select(RoomMember).where(
+            RoomMember.room_id == room.id,
+            RoomMember.spotify_id == spotify_user_id
+        )
+    ).first()
+    if not already:
+        db.add(RoomMember(room_id=room.id, spotify_id=spotify_user_id))
+        db.commit()
+
+    return {"room_code": room_code, "joined": True}
+
+
+@app.get("/members")
+def members(room_code: Optional[str] = None, db: Session = Depends(get_session)):
+    """Retourne la liste des membres. Si room_code fourni, filtre par room."""
+    if room_code:
+        room = db.exec(select(Room).where(Room.room_code == room_code)).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="Room introuvable")
+
+        room_members = db.exec(
+            select(RoomMember).where(RoomMember.room_id == room.id)
+        ).all()
+        member_ids = [m.spotify_id for m in room_members]
+
+        users = db.exec(
+            select(User).where(User.spotify_id.in_(member_ids))
+        ).all() if member_ids else []
     else:
         users = db.exec(select(User)).all()
+
     return {
         "members": [
             {
@@ -197,11 +258,15 @@ async def generate(request: PlaylistGenerateRequest, db: Session = Depends(get_s
     # Déterminer la liste des membres à partir de la room ou de member_ids
     member_ids = request.member_ids or []
 
-    # Si une room est spécifiée et existe, on l'utilise comme source de vérité
-    if request.room_id and request.room_id in ROOMS:
-        room_members = ROOMS.get(request.room_id) or []
-        if room_members:
-            member_ids = room_members
+    # Si un room_code est fourni, on récupère les membres depuis la DB
+    if request.room_id:
+        room = db.exec(select(Room).where(Room.room_code == request.room_id)).first()
+        if room:
+            room_members = db.exec(
+                select(RoomMember).where(RoomMember.room_id == room.id)
+            ).all()
+            if room_members:
+                member_ids = [m.spotify_id for m in room_members]
 
     # Si toujours aucune liste de membres, utiliser tous les utilisateurs connectés
     if not member_ids:
@@ -327,7 +392,7 @@ def get_personal_recommendations(spotify_user_id: str, limit: int = 20, db: Sess
     rec_service = RecommendationService(db)
     
     # Récupérer les top tracks de l'utilisateur comme seeds
-    tokens = get_member_tokens(spotify_user_id) or {}
+    tokens = {"access_token": user.access_token, "refresh_token": user.refresh_token}
     access_token = get_valid_access_token(tokens)
     
     if not access_token:

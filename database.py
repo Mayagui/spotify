@@ -1,11 +1,12 @@
 from sqlmodel import SQLModel, create_engine, Session
 import os
 
-# Utiliser SQLite pour le développement (plus simple)
-# Pour PostgreSQL en production, utilisez: "postgresql://user:password@localhost:5432/spotify_db"
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./spotify.db")
 
-engine = create_engine(DATABASE_URL, echo=False)
+# pool_pre_ping=True : vérifie la connexion avant chaque requête.
+# Indispensable avec PostgreSQL pour survivre aux redémarrages du conteneur.
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True, connect_args=connect_args)
 
 def create_db_and_tables():
     """Crée toutes les tables définies dans models.py"""
