@@ -42,9 +42,10 @@ steps:
 images:
   - 'gcr.io/$PROJECT_ID/spotify-groupmix:$COMMIT_SHA'
 
+logsBucket: 'gs://spotify-groupmix-logs'
+
 options:
   logging: GCS_ONLY
-  logsBucket: 'gs://spotify-groupmix-logs'
 
 # Les secrets sont lus depuis Google Secret Manager
 # Pour les créer : gcloud secrets create SPOTIFY_CLIENT_ID --data-file=-
