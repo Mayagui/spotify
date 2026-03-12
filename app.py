@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Tes modules locaux
 from config import APP_SECRET_KEY, assert_config, SPOTIFY_REDIRECT_URI
+from crypto import encrypt_token, decrypt_token
 from group_playlist import generate_group_playlist
 from spotify_oauth import get_auth_url, exchange_code_for_token, get_current_user_profile, get_valid_access_token
 from database import create_db_and_tables, get_session
@@ -139,8 +140,8 @@ def callback(
     existing_user = db.exec(statement).first()
 
     if existing_user:
-        existing_user.access_token = access_token
-        existing_user.refresh_token = refresh_token
+        existing_user.access_token = encrypt_token(access_token)
+        existing_user.refresh_token = encrypt_token(refresh_token)
         existing_user.display_name = display_name
         if profile_image:
             existing_user.profile_image = profile_image
@@ -149,8 +150,8 @@ def callback(
         new_user = User(
             spotify_id=spotify_user_id,
             display_name=display_name,
-            access_token=access_token,
-            refresh_token=refresh_token,
+            access_token=encrypt_token(access_token),
+            refresh_token=encrypt_token(refresh_token),
             profile_image=profile_image
         )
         db.add(new_user)
@@ -292,19 +293,19 @@ async def generate(request: PlaylistGenerateRequest, db: Session = Depends(get_s
         raise HTTPException(status_code=404, detail=f"Utilisateur {owner_id} non trouvé")
     
     # Obtenir un token valide pour le propriétaire
-    owner_tokens = {"access_token": owner_user.access_token, "refresh_token": owner_user.refresh_token}
+    owner_tokens = {"access_token": decrypt_token(owner_user.access_token), "refresh_token": decrypt_token(owner_user.refresh_token)}
     owner_access = get_valid_access_token(owner_tokens)
-    
+
     if not owner_access:
         raise HTTPException(status_code=401, detail="Token propriétaire invalide")
-    
+
     # Récupérer les tokens de tous les autres membres
     member_tokens = []
     for member_id in request.member_ids[1:]:  # Skip owner
         member_statement = select(User).where(User.spotify_id == member_id)
         member_user = db.exec(member_statement).first()
         if member_user:
-            member_tokens_dict = {"access_token": member_user.access_token, "refresh_token": member_user.refresh_token}
+            member_tokens_dict = {"access_token": decrypt_token(member_user.access_token), "refresh_token": decrypt_token(member_user.refresh_token)}
             access = get_valid_access_token(member_tokens_dict)
             if access:
                 member_tokens.append(access)
@@ -392,7 +393,7 @@ def get_personal_recommendations(spotify_user_id: str, limit: int = 20, db: Sess
     rec_service = RecommendationService(db)
     
     # Récupérer les top tracks de l'utilisateur comme seeds
-    tokens = {"access_token": user.access_token, "refresh_token": user.refresh_token}
+    tokens = {"access_token": decrypt_token(user.access_token), "refresh_token": decrypt_token(user.refresh_token)}
     access_token = get_valid_access_token(tokens)
     
     if not access_token:
