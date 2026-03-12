@@ -591,7 +591,7 @@
                         </div>
 
                         <div id="roomJoinRow" style="display: flex; gap: 10px; align-items: center;">
-                            <input type="text" id="roomIdInput" placeholder="Colle un room_id (ex: ab12cd34)" style="flex: 1;">
+                            <input type="text" id="roomIdInput" placeholder="Code du salon (ex: A3X9KL)" style="flex: 1;">
                             <button class="btn btn-secondary" style="padding: 12px 18px; width: auto;" onclick="joinRoom()">
                                 Rejoindre
                             </button>
@@ -760,26 +760,22 @@
         let memberIds = [];
         let currentRoomId = null;
 
-        function _generateRoomId() {
-            return Math.random().toString(36).slice(2, 10);
-        }
-
-        function _getRoomIdFromUrl() {
+        function _getRoomCodeFromUrl() {
             const urlParams = new URLSearchParams(window.location.search);
-            return urlParams.get('room_id');
+            return urlParams.get('room_code');
         }
 
-        function _setRoomInUrl(roomId) {
+        function _setRoomInUrl(roomCode) {
             const url = new URL(window.location.href);
-            if (roomId) url.searchParams.set('room_id', roomId);
-            else url.searchParams.delete('room_id');
+            if (roomCode) url.searchParams.set('room_code', roomCode);
+            else url.searchParams.delete('room_code');
             window.history.replaceState({}, document.title, url.toString());
         }
 
-        function _roomInviteLink(roomId) {
+        function _roomInviteLink(roomCode) {
             const url = new URL(window.location.href);
             url.pathname = '/ui';
-            url.searchParams.set('room_id', roomId);
+            url.searchParams.set('room_code', roomCode);
             return url.toString();
         }
 
@@ -803,23 +799,45 @@
             hint.style.display = 'none';
         }
 
-        function createRoom() {
-            currentRoomId = _generateRoomId();
-            localStorage.setItem('room_id', currentRoomId);
-            _setRoomInUrl(currentRoomId);
-            updateRoomUI();
-            loadMembers();
+        async function createRoom() {
+            try {
+                const response = await fetch(`${API_BASE}/rooms`, { method: 'POST' });
+                if (!response.ok) {
+                    const err = await response.json();
+                    alert(err.detail || 'Erreur lors de la création du salon. Êtes-vous connecté ?');
+                    return;
+                }
+                const data = await response.json();
+                currentRoomId = data.room_code;
+                localStorage.setItem('room_code', currentRoomId);
+                _setRoomInUrl(currentRoomId);
+                updateRoomUI();
+                loadMembers();
+            } catch (e) {
+                alert('Impossible de créer le salon. Vérifiez votre connexion.');
+            }
         }
 
-        function joinRoom() {
+        async function joinRoom() {
             const input = document.getElementById('roomIdInput');
-            const value = (input.value || '').trim();
-            if (!value) return;
-            currentRoomId = value;
-            localStorage.setItem('room_id', currentRoomId);
-            _setRoomInUrl(currentRoomId);
-            updateRoomUI();
-            loadMembers();
+            const code = (input.value || '').trim().toUpperCase();
+            if (!code) return;
+            try {
+                const response = await fetch(`${API_BASE}/rooms/${encodeURIComponent(code)}/join`, { method: 'POST' });
+                if (!response.ok) {
+                    const err = await response.json();
+                    alert(err.detail || 'Salon introuvable. Vérifiez le code.');
+                    return;
+                }
+                currentRoomId = code;
+                localStorage.setItem('room_code', currentRoomId);
+                _setRoomInUrl(currentRoomId);
+                input.value = '';
+                updateRoomUI();
+                loadMembers();
+            } catch (e) {
+                alert('Impossible de rejoindre le salon. Vérifiez votre connexion.');
+            }
         }
 
         async function copyRoomLink() {
@@ -839,7 +857,7 @@
 
         function leaveRoom() {
             currentRoomId = null;
-            localStorage.removeItem('room_id');
+            localStorage.removeItem('room_code');
             _setRoomInUrl(null);
             updateRoomUI();
             loadMembers();
@@ -871,7 +889,7 @@
         async function loadMembers() {
             try {
                 const url = currentRoomId
-                    ? `${API_BASE}/members?room_id=${encodeURIComponent(currentRoomId)}`
+                    ? `${API_BASE}/members?room_code=${encodeURIComponent(currentRoomId)}`
                     : `${API_BASE}/members`;
                 const response = await fetch(url);
                 const data = await response.json();
@@ -965,9 +983,11 @@
                         statsHtml = `<div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
                             <div style="font-size: 0.85em; color: var(--text-gray);">
                                 <strong style="color: var(--text-white);">Statistiques de l'algorithme :</strong><br>
-                                Méthode : <span style="color: var(--spotify-green);">${result.method || selectedMethod}</span> &bull; 
-                                Graines (Seeds) : <span style="color: var(--text-white);">${result.stats.seeds_used || 'N/A'}</span> &bull; 
-                                Titres évalués : <span style="color: var(--text-white);">${result.stats.candidates_evaluated || 'N/A'}</span>
+                                Méthode : <span style="color: var(--spotify-green);">${result.method || selectedMethod}</span> &bull;
+                                Seeds tracks : <span style="color: var(--text-white);">${result.stats.seeds_tracks ?? 'N/A'}</span> &bull;
+                                Seeds artistes : <span style="color: var(--text-white);">${result.stats.seeds_artists ?? 'N/A'}</span> &bull;
+                                Candidats Spotify : <span style="color: var(--text-white);">${result.stats.candidates_from_spotify ?? 'N/A'}</span> &bull;
+                                Titres connus exclus : <span style="color: var(--text-white);">${result.stats.known_tracks_excluded ?? 'N/A'}</span>
                             </div>
                         </div>`;
                     }
@@ -1021,9 +1041,9 @@
         setInterval(loadMembers, 10000);
         
         document.addEventListener('DOMContentLoaded', function() {
-            currentRoomId = _getRoomIdFromUrl() || localStorage.getItem('room_id');
+            currentRoomId = _getRoomCodeFromUrl() || localStorage.getItem('room_code');
             if (currentRoomId) {
-                localStorage.setItem('room_id', currentRoomId);
+                localStorage.setItem('room_code', currentRoomId);
                 _setRoomInUrl(currentRoomId);
             }
             updateRoomUI();
