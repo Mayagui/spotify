@@ -18,6 +18,26 @@ SPOTIFY_API_BASE = "https://api.spotify.com/v1"
 
 # --- Fonctions Utilitaires ---
 
+def _get_recently_played(access_token: str, limit: int = 50) -> List[str]:
+    """Récupère les IDs des titres récemment joués."""
+    headers = {"Authorization": f"Bearer {access_token}"}
+    try:
+        resp = requests.get(
+            f"{SPOTIFY_API_BASE}/me/player/recently-played",
+            headers=headers,
+            params={"limit": limit},
+            timeout=15
+        )
+        if resp.ok:
+            items = resp.json().get("items", [])
+            ids = [item["track"]["id"] for item in items if item.get("track", {}).get("id")]
+            logger.info(f"✅ Recently played: {len(ids)} tracks")
+            return ids
+    except Exception as e:
+        logger.warning(f"⚠️ recently-played error: {e}")
+    return []
+
+
 def _get_top_items(access_token: str, item_type: str, limit: int = 20) -> List[Any]:
     """Récupère les top titres ou artistes de l'utilisateur."""
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -174,7 +194,12 @@ def generate_group_playlist(owner_access_token: str, owner_user_id: str, member_
         return {"error": "Impossible de récupérer les morceaux favoris. Vérifiez vos permissions."}
 
     # Dédupliquer les favoris connus (pour les exclure plus tard)
+    # On inclut aussi les titres récemment joués pour éviter les sons déjà entendus
     known_track_ids = {t['id'] for t in all_top_tracks if t.get('id')}
+    for token in all_tokens:
+        recent_ids = _get_recently_played(token, limit=50)
+        known_track_ids.update(recent_ids)
+    logger.info(f"🚫 Titres connus à exclure (top + récents): {len(known_track_ids)}")
 
     # Sélectionner les seeds : tracks et artistes les plus représentatifs du groupe
     # On utilise les tracks qui apparaissent dans les favoris de plusieurs membres
@@ -268,14 +293,21 @@ def generate_group_playlist(owner_access_token: str, owner_user_id: str, member_
             )
             method_used = method
         else:
-            # Méthode simple : on prend les recommandations Spotify dans l'ordre
             recommended_ids = candidate_track_ids[:limit]
             method_used = "spotify-recommendations"
 
         if not recommended_ids:
-            # Dernier recours : prendre les candidats dans l'ordre Spotify
             recommended_ids = candidate_track_ids[:limit]
             method_used = "spotify-recommendations"
+
+        # Si le content-based filtering n'a pas renvoyé assez de titres
+        # (ex: audio features indisponibles pour certains candidats),
+        # on complète avec les candidats restants dans l'ordre Spotify.
+        if len(recommended_ids) < limit:
+            already_selected = set(recommended_ids)
+            extras = [tid for tid in candidate_track_ids if tid not in already_selected]
+            recommended_ids = recommended_ids + extras[:limit - len(recommended_ids)]
+            logger.info(f"🔁 Complété à {len(recommended_ids)} titres (padding candidats Spotify)")
 
     logger.info(f"✅ {len(recommended_ids)} musiques sélectionnées avec méthode: {method_used}")
 
